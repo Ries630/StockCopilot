@@ -10,7 +10,7 @@ TradingCopilot (仮想通貨) の兄弟プロジェクト。設計判断の経�
 **`pip install` / `python -m venv` を使わないこと。**
 
 ```bash
-cd ~/Documents/Claude/Projects/StockCopilot
+cd ~/Repositories/StockCopilot
 uv run screen.py            # スクリーナー
 uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
 ```
@@ -32,7 +32,7 @@ uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
 - `config/universe.py` — スクリーニング対象ユニバースとパラメータ
 - `screen.py` — 候補の機械スクリーニング (買い判定はしない。候補を絞るだけ)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
-- `journal/journal.md` — 分析の継続記録 (swing/journal.md 方式)
+- `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
 
 ## 他プロジェクトとの関係
 
@@ -50,6 +50,19 @@ uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
 - 発注コード・証券会社の取引 API を追加しない (このプロジェクトのスコープ外)
 - `.env` を作る場合 (J-Quants 移行時) は `.gitignore` 登録を確認し、コミットしない
 - スクリーナーに裁量的な「買い判定」ロジックを足さない。候補の採否は分析 (analyze) を通す
+
+### public リポジトリ前提の規範
+
+このリポジトリは公開されている。**保有情報 (銘柄・株数・口座名・売買判断) を
+リポジトリに残さない**こと。保有は実行時に `lib/holdings.py` が
+Investment の生成物から読むだけで、リポジトリ側には持たない設計になっている。
+
+- `journal/journal.md` / `reports/` / `data/` はコミットしない (`.gitignore` 済み)
+- `config/universe.py` に**実際の保有銘柄を書き足さない**。保有は screen.py 実行時に
+  `held_tickers()` から動的にマージされるので、書く必要がない
+- Issue・PR・コミットメッセージに保有銘柄や株数を書かない。銘柄に触れる必要がある場合は
+  「保有銘柄A」等に置き換える
+- 分析結果の貼り付け (screen.py / analyze.py の出力) も同様に扱う
 
 ## 関連スキル (予定)
 

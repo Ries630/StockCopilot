@@ -1,7 +1,16 @@
 # 資格情報 (J-Quants 移行時に作成)
 .env
+.env.*
+!.env.example
 
-# OHLCV キャッシュ・生成物
+# OHLCV キャッシュ
 data/
+
+# 生成レポート: 保有モードで実行すると銘柄・株数が入りうるので追跡しない
+reports/
+
+# 分析ジャーナル本体: 保有銘柄・株数・売買判断の時系列が入る (書式は journal/README.md)
+journal/journal.md
+
 __pycache__/
 .DS_Store
