@@ -1,0 +1,7 @@
+# 資格情報 (J-Quants 移行時に作成)
+.env
+
+# OHLCV キャッシュ・生成物
+data/
+__pycache__/
+.DS_Store
