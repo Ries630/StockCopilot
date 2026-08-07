@@ -63,7 +63,12 @@ def normalize_ticker(ticker: str, market: str) -> str:
     return t
 
 
-def drop_forming_bar(df: pd.DataFrame, interval: str, market: str) -> pd.DataFrame:
+def drop_forming_bar(
+    df: pd.DataFrame,
+    interval: str,
+    market: str,
+    now: dt.datetime | None = None,
+) -> pd.DataFrame:
     """形成中 (未確定) の足を落とし、確定足だけを返す。
 
     - 日足: 末尾の足が「取引所ローカルの今日」かつ引け+バッファ前なら形成中。
@@ -74,6 +79,8 @@ def drop_forming_bar(df: pd.DataFrame, interval: str, market: str) -> pd.DataFra
         df: fetch_ohlcv 内部で取得した OHLCV。index は取引所 TZ の DatetimeIndex。
         interval: "1d" または "1wk"。
         market: "jp" または "us"。
+        now: 判定の基準時刻 (取引所 TZ)。省略時は現在時刻。
+            テストから決定的に検証するための注入点で、通常は渡さない。
 
     Returns:
         確定足のみの DataFrame。
@@ -81,7 +88,7 @@ def drop_forming_bar(df: pd.DataFrame, interval: str, market: str) -> pd.DataFra
     if df.empty:
         return df
     cfg = MARKET_CONFIG[market]
-    now = dt.datetime.now(cfg["tz"])
+    now = now or dt.datetime.now(cfg["tz"])
     last = df.index[-1]
     if last.tzinfo is None:
         last = last.tz_localize(cfg["tz"])

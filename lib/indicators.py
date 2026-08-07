@@ -34,11 +34,11 @@ def compute(df: pd.DataFrame) -> dict:
     """
     if df.empty or len(df) < 30:
         return {"error": "insufficient", "bars": len(df)}
-    c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
+    c, h, lo, v = df["close"], df["high"], df["low"], df["volume"]
     macd = ta.trend.MACD(c, 26, 12, 9)
     bb = ta.volatility.BollingerBands(c, 20, 2)
     srsi = ta.momentum.StochRSIIndicator(c, 14, 3, 3)
-    adx = ta.trend.ADXIndicator(h, l, c, 14)
+    adx = ta.trend.ADXIndicator(h, lo, c, 14)
     obv = ta.volume.OnBalanceVolumeIndicator(c, v).on_balance_volume()
     return {
         "close": _f(c.iloc[-1]),
@@ -47,11 +47,14 @@ def compute(df: pd.DataFrame) -> dict:
         "macd_hist_prev": _f(macd.macd_diff().iloc[-2]),
         "ema20": _f(ta.trend.EMAIndicator(c, 20).ema_indicator().iloc[-1]),
         "ema50": _f(ta.trend.EMAIndicator(c, 50).ema_indicator().iloc[-1]),
-        "ema200": _f(ta.trend.EMAIndicator(c, 200).ema_indicator().iloc[-1]) if len(c) >= 200 else None,
+        # EMA200 は 200 本未満だと不完全な値になるので出さない (長期トレンドを誤らせる)
+        "ema200": (
+            _f(ta.trend.EMAIndicator(c, 200).ema_indicator().iloc[-1]) if len(c) >= 200 else None
+        ),
         "bb_high": _f(bb.bollinger_hband().iloc[-1]),
         "bb_low": _f(bb.bollinger_lband().iloc[-1]),
         "bb_pctb": _f(bb.bollinger_pband().iloc[-1]),
-        "atr": _f(ta.volatility.AverageTrueRange(h, l, c, 14).average_true_range().iloc[-1]),
+        "atr": _f(ta.volatility.AverageTrueRange(h, lo, c, 14).average_true_range().iloc[-1]),
         "stochrsi_k": _f(srsi.stochrsi_k().iloc[-1] * 100),
         "obv": _f(obv.iloc[-1]),
         "obv_prev10": _f(obv.iloc[max(0, len(obv) - 11)]),
@@ -59,9 +62,9 @@ def compute(df: pd.DataFrame) -> dict:
         "dip": _f(adx.adx_pos().iloc[-1]),
         "dim": _f(adx.adx_neg().iloc[-1]),
         "high20": _f(h.tail(20).max()),
-        "low20": _f(l.tail(20).min()),
+        "low20": _f(lo.tail(20).min()),
         "high60": _f(h.tail(60).max()),
-        "low60": _f(l.tail(60).min()),
+        "low60": _f(lo.tail(60).min()),
         "bars": len(df),
     }
 
@@ -81,17 +84,17 @@ def daily_stats(df: pd.DataFrame) -> dict | None:
     """
     if df is None or len(df) < 22:
         return None
-    h, l, c, v = df["high"], df["low"], df["close"], df["volume"]
+    h, lo, c, v = df["high"], df["low"], df["close"], df["volume"]
 
     # True Range: 当日の値幅と、前日終値からのギャップの大きいほう
     prev_c = c.shift(1)
-    tr = pd.concat([h - l, (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
+    tr = pd.concat([h - lo, (h - prev_c).abs(), (lo - prev_c).abs()], axis=1).max(axis=1)
     atr = float(tr.tail(14).mean())
     last_close = float(c.iloc[-1])
 
     # 末尾 (=直近確定足) を除いた直前 20 本のレンジ。ブレイク判定の基準
     hi20 = float(h.iloc[-21:-1].max())
-    lo20 = float(l.iloc[-21:-1].min())
+    lo20 = float(lo.iloc[-21:-1].min())
     span = hi20 - lo20
     return {
         "atr": atr,
