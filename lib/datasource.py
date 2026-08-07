@@ -134,6 +134,37 @@ def fetch_ohlcv(
     return df.tail(limit)
 
 
+def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | None:
+    """次回 (未来) または直近 (過去) の決算発表日を返す。
+
+    決算はギャップ要因であり、「日足終値で X を割ったら」という**確定足ベースの
+    トリガーを飛び越えて執行不能にする**。日程の報告のためではなく、
+    トリガーが有効かどうかを判断するために取得する。
+
+    Args:
+        ticker: 生ティッカー ("9433", "AAPL")。
+        market: "jp" / "us"。省略時は detect_market() で推定。
+
+    Returns:
+        決算日。ETF など決算の概念が無い銘柄、取得失敗時は None。
+    """
+    import yfinance as yf  # import が遅いので使用時に読み込む
+
+    market = market or detect_market(ticker)
+    symbol = normalize_ticker(ticker, market)
+    try:
+        dates = (yf.Ticker(symbol).calendar or {}).get("Earnings Date") or []
+    except Exception:
+        # ETF は fundamentals が無く 404 になる。決算の有無は分析を止める理由ではない
+        return None
+    if not dates:
+        return None
+    first = dates[0]
+    if isinstance(first, dt.datetime):
+        return first.date()
+    return first if isinstance(first, dt.date) else None
+
+
 if __name__ == "__main__":
     # 疎通確認用 CLI: uv run lib/datasource.py --ticker 9433
     import argparse
@@ -145,5 +176,6 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     out = fetch_ohlcv(args.ticker, interval=args.interval, limit=args.limit)
-    print(f"market={detect_market(args.ticker)} bars={len(out)}")
+    print(f"market={detect_market(args.ticker)} bars={len(out)} "
+          f"earnings={fetch_next_earnings(args.ticker)}")
     print(out)
