@@ -1,0 +1,18 @@
+# Lint 設定。
+#
+# pyproject.toml は置かない。置くと uv がこのディレクトリをパッケージプロジェクトとして
+# 扱い、PEP 723 のインライン依存でスクリプトを走らせる運用 (CLAUDE.md の環境前提) と
+# 食い違うため。lint 設定だけを ruff.toml に切り出している。
+
+line-length = 100
+target-version = "py310"
+
+[lint]
+# E/W=pycodestyle, F=pyflakes, I=import 順, UP=新しい構文への追従, B=bugbear。
+# 既定の DTZ (naive datetime 禁止) は入れない。本プロジェクトは取引所ごとの
+# ZoneInfo を明示的に扱っており、DTZ が ZoneInfo を誤検知するため。
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[lint.per-file-ignores]
+# テストは意図的に固定日時の naive datetime を組み立てる
+"tests/*" = ["E501"]

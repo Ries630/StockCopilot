@@ -167,8 +167,9 @@ def main() -> None:
         print(f"  {c['ticker']:<8} {cur}{c['close']:<12,.2f} 直近足 {c['change_pct']:+.2f}% "
               f"[score {c['score']:.1f} ATR]")
         print(f"    {' / '.join(c['reasons'])}")
-        print(f"    20日レンジ {c['low20']:,.2f}〜{c['high20']:,.2f} (終値位置 {c['range_pos']:.0%}) "
-              f"/ ATR {c['atr_pct']:.1f}% / 売買代金20日平均 {cur}{c['turnover_avg20']:,.0f}\n")
+        print(f"    20日レンジ {c['low20']:,.2f}〜{c['high20']:,.2f} "
+              f"(終値位置 {c['range_pos']:.0%}) / ATR {c['atr_pct']:.1f}% "
+              f"/ 売買代金20日平均 {cur}{c['turnover_avg20']:,.0f}\n")
 
 
 if __name__ == "__main__":

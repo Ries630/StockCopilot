@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: lint + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv をセットアップ
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # 保有情報がリポジトリに入っていないことを機械的に担保する。
+      # このリポジトリは public で、銘柄・株数・口座名が漏れると取り返しがつかない。
+      # レビューの目視だけに頼らず CI で落とす (CLAUDE.md「public リポジトリ前提の規範」)。
+      - name: 保有情報ファイルが追跡されていないこと
+        run: |
+          leaked=""
+          for path in journal/journal.md reports data .env; do
+            if git ls-files --error-unmatch "$path" > /dev/null 2>&1; then
+              leaked="$leaked $path"
+            fi
+          done
+          if [ -n "$leaked" ]; then
+            echo "追跡してはいけないパスが追跡されている:$leaked" >&2
+            exit 1
+          fi
+          echo "OK: 保有情報ファイルは追跡されていない"
+
+      - name: Lint (ruff)
+        run: uv run --with ruff ruff check .
+
+      # テストはネットワークにアクセスしない。yfinance を叩くと実行日と
+      # 市場の状態で結果が変わり、CI が不安定になるため。
+      - name: テスト
+        run: uv run run_tests.py

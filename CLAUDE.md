@@ -13,7 +13,12 @@ TradingCopilot (仮想通貨) の兄弟プロジェクト。設計判断の経�
 cd ~/Repositories/StockCopilot
 uv run screen.py            # スクリーナー
 uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
+uv run run_tests.py         # テスト (ネットワークアクセスなし)
+uv run --with ruff ruff check .  # lint
 ```
+
+`pyproject.toml` は置かない。置くと uv がパッケージプロジェクトとして扱い、
+PEP 723 のインライン依存で動かす運用と食い違う。lint 設定は `ruff.toml` に切り出している。
 
 ## データ源 (2026-08-06 決定)
 
@@ -33,6 +38,10 @@ uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
 - `screen.py` — 候補の機械スクリーニング (買い判定はしない。候補を絞るだけ)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
+- `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
+  実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは
+  判定時刻を注入して検証する (`drop_forming_bar(..., now=...)`)
+- `.github/workflows/ci.yml` — PR と main への push で lint・テスト・**保有情報の追跡チェック**を実行
 
 ## 他プロジェクトとの関係
 
