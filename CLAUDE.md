@@ -64,7 +64,8 @@ Investment の生成物から読むだけで、リポジトリ側には持たな
   「保有銘柄A」等に置き換える
 - 分析結果の貼り付け (screen.py / analyze.py の出力) も同様に扱う
 
-## 関連スキル (予定)
+## 関連スキル
 
-- `stock-screen` — ユニバースから候補を機械抽出 (screen.py)
-- `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)
+- `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
+  実体は `~/.claude/skills/stock-check/SKILL.md`
+- `stock-screen` (**未作成**) — ユニバースから候補を機械抽出 (screen.py)
