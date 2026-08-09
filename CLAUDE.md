@@ -33,6 +33,7 @@ PEP 723 のインライン依存で動かす運用と食い違う。lint 設定�
 
 - `lib/datasource.py` — 株価取得アダプタ (yfinance)。差し替えはこのファイルに閉じる
 - `lib/indicators.py` — 指標エンジン (TradingCopilot `swing/_analyze.py` から移植。pandas + ta)
+- `lib/earnings.py` — 決算注記。analyze.py と screen.py が共用 (警告期間と文言の正)
 - `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)
 - `config/universe.py` — 探索ユニバースとパラメータ
 - `config/watchlist.py` — ウォッチリスト (保有検討中)。**追跡対象外**。

@@ -153,3 +153,26 @@ def test_illiquid_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     """流動性フロア未満は突破していても候補にしない。"""
     _patch_bar(monkeypatch, [501.9, 502.0], turnover_avg20=1e7)
     assert screen.screen_one("TEST", "us") is None
+
+
+# --- attach_earnings: 決算注記 ---
+
+
+def test_attach_earnings_adds_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    """候補に決算注記が付く。"""
+    monkeypatch.setattr(screen, "earnings_note", lambda t, m: f"決算 {t}/{m}")
+    candidates = [{"ticker": "TEST", "market": "us"}]
+    screen.attach_earnings(candidates)
+    assert candidates[0]["earnings_note"] == "決算 TEST/us"
+
+
+def test_attach_earnings_survives_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算の取得に失敗しても候補は落とさない (決算の有無は採否と別)。"""
+
+    def _boom(ticker: str, market: str) -> str:
+        raise RuntimeError("yfinance が落ちた")
+
+    monkeypatch.setattr(screen, "earnings_note", _boom)
+    candidates = [{"ticker": "TEST", "market": "us"}]
+    screen.attach_earnings(candidates)
+    assert candidates[0]["earnings_note"] == ""

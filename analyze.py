@@ -19,7 +19,8 @@ import datetime as dt
 import json
 import sys
 
-from lib.datasource import detect_market, fetch_next_earnings, fetch_ohlcv
+from lib.datasource import detect_market, fetch_ohlcv
+from lib.earnings import earnings_note
 from lib.holdings import load_holdings
 from lib.indicators import compute
 
@@ -27,42 +28,6 @@ from lib.indicators import compute
 # Investment は日次更新ではないため、古い as_of のまま「前回からの増減」を
 # 判定すると、実際には無かった売買を読み取ってしまう
 STALE_DAYS = 7
-
-# 決算日がこの日数以内 (前後) なら警告を付ける。
-# 前方 = 確定足ベースのトリガーがギャップで飛ばされうる期間、
-# 後方 = 直近の値動きが決算反応である可能性を疑うべき期間
-EARNINGS_ALERT_DAYS = 7
-
-
-def earnings_note(ticker: str, market: str) -> str:
-    """決算日の注記を返す。取得できなければ空文字。
-
-    決算日そのものを報告するためではなく、確定足ベースのトリガーが
-    ギャップで飛ばされうる期間かどうかを示すために出す。
-
-    Args:
-        ticker: 生ティッカー。
-        market: "jp" または "us"。
-
-    Returns:
-        表示用の 1 行 (例: "⚠ 決算 2026-08-07 (本日) — ギャップ注意")。
-    """
-    day = fetch_next_earnings(ticker, market)
-    if day is None:
-        return ""
-    delta = (day - dt.date.today()).days
-    if delta > 0:
-        note = f"決算 {day} (あと {delta} 日)"
-        warn = delta <= EARNINGS_ALERT_DAYS
-    elif delta == 0:
-        note, warn = f"決算 {day} (本日)", True
-    else:
-        note = f"直近決算 {day} ({-delta} 日前)"
-        warn = -delta <= EARNINGS_ALERT_DAYS
-    if not warn:
-        return note
-    tail = "直近の値動きは決算反応の可能性" if delta < 0 else "ギャップでトリガーが飛びうる"
-    return f"⚠ {note} — {tail}"
 
 
 def analyze_symbol(ticker: str, market: str, label: str = "") -> None:
