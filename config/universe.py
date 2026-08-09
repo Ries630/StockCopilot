@@ -5,11 +5,28 @@ crypto (swing/screen.py) は Hyperliquid の 1 リクエストで全銘柄の出
 **明示的なリスト管理** にする。初回は狭く始め、運用しながら追加する方針
 (候補が出ない日は「候補なし」でよい。母集団を無理に広げない)。
 
+母集団は 3 層:
+
+1. **ウォッチリスト** (保有検討中) — config/watchlist.py。常に含める
+2. **探索ユニバース** (下記 UNIVERSE_JP / UNIVERSE_US) — 知らない銘柄を拾う枠。
+   広げるほど実行時間が延びるので、候補ゼロの頻度を実測してから拡張する
+3. **保有** — 既定で除外
+
 保有銘柄はスクリーニングの対象ではない。screen.py が lib/holdings.py の
 held_tickers() を除外フィルタとして使い、既定で母集団から落とす
 (--include-held で含められる)。既に持っている銘柄が候補に出ても行動が変わらず、
 保有側の判断は analyze.py / stock-check が担うため。
 """
+
+# ウォッチリスト (保有検討中の銘柄) は config/watchlist.py に置く。
+# public リポジトリに購入意図を残さないため追跡対象外にしており、
+# 未作成の環境 (CI・クリーンクローン) では空リストとして扱う。
+# 雛形は config/watchlist.example.py
+try:
+    from config.watchlist import WATCHLIST_JP, WATCHLIST_US
+except ImportError:
+    WATCHLIST_JP: list[str] = []
+    WATCHLIST_US: list[str] = []
 
 # --- 日本株: 流動性の高い主要銘柄 (編集して拡張) ---
 # public リポジトリなので、ここに実際の保有銘柄を書き足さないこと。
