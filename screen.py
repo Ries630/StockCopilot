@@ -14,6 +14,9 @@
   - 確定終値が直前 20 日レンジを上抜け / 下抜け
 「レンジの端に近い」は状態であって事象ではないので条件にしない。
 
+母集団はウォッチリスト (config/watchlist.py) + 探索ユニバース (config/universe.py)。
+保有銘柄は既定で除外する (--include-held で含められる)。
+
 使い方:
     uv run screen.py                     # JP + US 全ユニバース
     uv run screen.py --market jp         # 日本株のみ
@@ -31,6 +34,8 @@ from config.universe import (
     MIN_TURNOVER_USD,
     UNIVERSE_JP,
     UNIVERSE_US,
+    WATCHLIST_JP,
+    WATCHLIST_US,
 )
 from lib.datasource import fetch_ohlcv
 from lib.holdings import held_tickers
@@ -40,18 +45,32 @@ from lib.indicators import daily_stats
 def build_universe(market: str, include_held: bool) -> list[tuple[str, str]]:
     """(ticker, market) のリストを返す。保有銘柄は既定で除外する。
 
+    ウォッチリスト (保有検討中) を探索ユニバースより先に置く。取得順が
+    そのまま失敗時の到達順になるため、優先度の高い層から取りに行く。
+
     Args:
         market: "jp" / "us" / "all"。
         include_held: True なら保有銘柄を除外しない。
 
     Returns:
-        [(ticker, market), ...]
+        [(ticker, market), ...] ティッカーの重複は除去済み。
     """
     universe: list[tuple[str, str]] = []
     if market in ("jp", "all"):
-        universe += [(t, "jp") for t in UNIVERSE_JP]
+        universe += [(t, "jp") for t in [*WATCHLIST_JP, *UNIVERSE_JP]]
     if market in ("us", "all"):
-        universe += [(t, "us") for t in UNIVERSE_US]
+        universe += [(t, "us") for t in [*WATCHLIST_US, *UNIVERSE_US]]
+
+    # ウォッチリストと探索ユニバースは重複しうる。yfinance は 1 銘柄 1 リクエストなので、
+    # 重複を残すと同じ銘柄を二度取りに行くことになる
+    deduped: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for ticker, mkt in universe:
+        if ticker not in seen:
+            seen.add(ticker)
+            deduped.append((ticker, mkt))
+    universe = deduped
+
     if not include_held:
         try:
             held = held_tickers()

@@ -30,6 +30,8 @@
 保有は実行時に `lib/holdings.py` が別プロジェクト (Investment) の生成 JSON を
 read-only で読むだけで、リポジトリ側には持たない。分析の継続記録である
 `journal/journal.md` も `.gitignore` 済みで、書式仕様 (`journal/README.md`) だけを追跡する。
+ウォッチリスト (`config/watchlist.py`) は保有ではないが購入意図そのものなので同じ扱いにし、
+雛形 (`config/watchlist.example.py`) だけを追跡する。
 
 CI に追跡状況のチェックを入れ、目視レビューに頼らず機械的に担保している。
 
@@ -50,6 +52,18 @@ cd StockCopilot
 ```
 
 [uv](https://docs.astral.sh/uv/) が入っていれば、依存は初回実行時に自動で解決される。
+
+### ウォッチリスト (任意)
+
+保有を検討中の銘柄は `config/watchlist.py` に置くと、スクリーニングの母集団に入る。
+
+```bash
+cp config/watchlist.example.py config/watchlist.py
+```
+
+このファイルは `.gitignore` 済みで、CI でも追跡されていないことを検査している。
+購入意図はリポジトリに残さない (「保有情報をリポジトリに持たない」と同じ理由)。
+作らなくても空リスト扱いで動く。
 
 ## 使い方
 
@@ -77,7 +91,8 @@ uv run lib/datasource.py --ticker 7203
 | `lib/datasource.py` | 株価取得アダプタ (yfinance)。データ源の差し替えはこのファイルに閉じる |
 | `lib/indicators.py` | 指標エンジン (RSI / MACD / EMA / BB / ATR / StochRSI / OBV / ADX) |
 | `lib/holdings.py` | 保有の読み込み (read-only) |
-| `config/universe.py` | スクリーニング対象ユニバースとパラメータ |
+| `config/universe.py` | 探索ユニバースとパラメータ |
+| `config/watchlist.example.py` | ウォッチリストの雛形 (本体 `watchlist.py` は追跡対象外) |
 | `screen.py` | 候補の機械スクリーニング |
 | `analyze.py` | 保有・指定銘柄のテクニカル分析 |
 | `journal/README.md` | 分析ジャーナルの書式仕様 (本体は追跡対象外) |

@@ -34,7 +34,9 @@ PEP 723 のインライン依存で動かす運用と食い違う。lint 設定�
 - `lib/datasource.py` — 株価取得アダプタ (yfinance)。差し替えはこのファイルに閉じる
 - `lib/indicators.py` — 指標エンジン (TradingCopilot `swing/_analyze.py` から移植。pandas + ta)
 - `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)
-- `config/universe.py` — スクリーニング対象ユニバースとパラメータ
+- `config/universe.py` — 探索ユニバースとパラメータ
+- `config/watchlist.py` — ウォッチリスト (保有検討中)。**追跡対象外**。
+  雛形は `config/watchlist.example.py`。未作成なら空リスト扱い
 - `screen.py` — 候補の機械スクリーニング (買い判定はしない。候補を絞るだけ)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
@@ -66,7 +68,9 @@ PEP 723 のインライン依存で動かす運用と食い違う。lint 設定�
 リポジトリに残さない**こと。保有は実行時に `lib/holdings.py` が
 Investment の生成物から読むだけで、リポジトリ側には持たない設計になっている。
 
-- `journal/journal.md` / `reports/` / `data/` はコミットしない (`.gitignore` 済み)
+- `journal/journal.md` / `reports/` / `data/` / `config/watchlist.py` はコミットしない
+  (`.gitignore` 済み・CI で検査)。ウォッチリストは保有ではないが**購入意図そのもの**なので
+  同じ扱いにする。雛形 `config/watchlist.example.py` だけを追跡する
 - `config/universe.py` に**実際の保有銘柄を書き足さない**。保有は screen.py が
   `held_tickers()` を除外フィルタとして使い既定で母集団から落とすので、書いても意味がない
   (スクリーニングは非保有銘柄の探索であり、保有側の判断は analyze.py / stock-check が担う)

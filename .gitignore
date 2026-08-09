@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# ウォッチリスト本体: 保有検討中の銘柄 = 購入意図なので追跡しない (雛形は watchlist.example.py)
+config/watchlist.py
+
 # OHLCV キャッシュ
 data/
 
