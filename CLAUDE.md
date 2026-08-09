@@ -83,4 +83,5 @@ Investment の生成物から読むだけで、リポジトリ側には持たな
 
 - `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
   実体は `~/.claude/skills/stock-check/SKILL.md`
-- `stock-screen` (**未作成**) — ユニバースから候補を機械抽出 (screen.py)
+- `stock-screen` — ウォッチリスト + 探索ユニバースから候補を機械抽出 (screen.py + journal)。
+  実体は `~/.claude/skills/stock-screen/SKILL.md`。**買い判定はしない**(採否は analyze を通す)
