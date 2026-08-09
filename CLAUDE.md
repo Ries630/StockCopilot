@@ -67,8 +67,9 @@ PEP 723 のインライン依存で動かす運用と食い違う。lint 設定�
 Investment の生成物から読むだけで、リポジトリ側には持たない設計になっている。
 
 - `journal/journal.md` / `reports/` / `data/` はコミットしない (`.gitignore` 済み)
-- `config/universe.py` に**実際の保有銘柄を書き足さない**。保有は screen.py 実行時に
-  `held_tickers()` から動的にマージされるので、書く必要がない
+- `config/universe.py` に**実際の保有銘柄を書き足さない**。保有は screen.py が
+  `held_tickers()` を除外フィルタとして使い既定で母集団から落とすので、書いても意味がない
+  (スクリーニングは非保有銘柄の探索であり、保有側の判断は analyze.py / stock-check が担う)
 - Issue・PR・コミットメッセージに保有銘柄や株数を書かない。銘柄に触れる必要がある場合は
   「保有銘柄A」等に置き換える
 - 分析結果の貼り付け (screen.py / analyze.py の出力) も同様に扱う
