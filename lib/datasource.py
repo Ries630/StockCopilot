@@ -38,7 +38,7 @@ def detect_market(ticker: str) -> str:
     """ティッカーから市場を推定する。4 桁数字 (+英字 1 文字の優先株等) なら JP、それ以外は US。
 
     Args:
-        ticker: "9433" / "AAPL" のような生ティッカー。
+        ticker: "7203" / "AAPL" のような生ティッカー。
 
     Returns:
         "jp" または "us"。
@@ -51,11 +51,11 @@ def normalize_ticker(ticker: str, market: str) -> str:
     """yfinance 用のシンボルに正規化する (JP は `.T` サフィックス)。
 
     Args:
-        ticker: 生ティッカー ("9433", "9433.T", "AAPL")。
+        ticker: 生ティッカー ("7203", "7203.T", "AAPL")。
         market: "jp" または "us"。
 
     Returns:
-        yfinance に渡すシンボル ("9433.T", "AAPL")。
+        yfinance に渡すシンボル ("7203.T", "AAPL")。
     """
     t = ticker.strip().upper()
     if market == "jp" and not t.endswith(".T"):
@@ -116,7 +116,7 @@ def fetch_ohlcv(
     """確定足の OHLCV を取得する。
 
     Args:
-        ticker: 生ティッカー ("9433", "AAPL")。
+        ticker: 生ティッカー ("7203", "AAPL")。
         market: "jp" / "us"。省略時は detect_market() で推定。
         interval: "1d" または "1wk"。
         limit: 返す最大本数 (確定足ベース)。
@@ -149,7 +149,7 @@ def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | Non
     トリガーが有効かどうかを判断するために取得する。
 
     Args:
-        ticker: 生ティッカー ("9433", "AAPL")。
+        ticker: 生ティッカー ("7203", "AAPL")。
         market: "jp" / "us"。省略時は detect_market() で推定。
 
     Returns:
@@ -173,7 +173,7 @@ def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | Non
 
 
 if __name__ == "__main__":
-    # 疎通確認用 CLI: uv run lib/datasource.py --ticker 9433
+    # 疎通確認用 CLI: uv run lib/datasource.py --ticker 7203
     import argparse
 
     ap = argparse.ArgumentParser(description="データ源アダプタの疎通確認")

@@ -12,7 +12,7 @@ TradingCopilot (仮想通貨) の兄弟プロジェクト。設計判断の経�
 ```bash
 cd ~/Repositories/StockCopilot
 uv run screen.py            # スクリーナー
-uv run analyze.py 9433 AAPL # 保有分析 (引数省略で保有全銘柄)
+uv run analyze.py 7203 AAPL # 保有分析 (引数省略で保有全銘柄)
 uv run run_tests.py         # テスト (ネットワークアクセスなし)
 uv run --with ruff ruff check .  # lint
 ```
