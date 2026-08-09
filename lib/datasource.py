@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import logging
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -141,6 +143,27 @@ def fetch_ohlcv(
     return df.tail(limit)
 
 
+@contextlib.contextmanager
+def _quiet_yfinance():
+    """yfinance のログを一時的に黙らせる。
+
+    ETF は fundamentals を持たないため calendar の取得が**必ず** 404 になり、
+    yfinance が自前のロガーで stderr に出す (例外は送出されない)。
+    こちらは「決算が取れない = None」として正常に扱うので、この行は
+    正常な経路で出るエラー表示になり、本物の取得失敗と区別が付かなくなる。
+
+    抑制は決算取得の呼び出し中だけに限る。価格取得のログまで消すと、
+    本当に困る失敗が見えなくなる。
+    """
+    logger = logging.getLogger("yfinance")
+    previous = logger.level
+    logger.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous)
+
+
 def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | None:
     """次回 (未来) または直近 (過去) の決算発表日を返す。
 
@@ -160,7 +183,8 @@ def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | Non
     market = market or detect_market(ticker)
     symbol = normalize_ticker(ticker, market)
     try:
-        dates = (yf.Ticker(symbol).calendar or {}).get("Earnings Date") or []
+        with _quiet_yfinance():
+            dates = (yf.Ticker(symbol).calendar or {}).get("Earnings Date") or []
     except Exception:
         # ETF は fundamentals が無く 404 になる。決算の有無は分析を止める理由ではない
         return None
