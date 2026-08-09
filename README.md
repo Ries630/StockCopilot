@@ -71,6 +71,7 @@ cp config/watchlist.example.py config/watchlist.py
 # 候補の機械スクリーニング
 uv run screen.py                  # JP + US 全ユニバース
 uv run screen.py --market jp      # 日本株のみ
+uv run screen.py --earnings       # 候補に決算日を併記
 uv run screen.py --json           # JSON 出力
 
 # テクニカル分析 (日足 + 週足)
@@ -90,6 +91,7 @@ uv run lib/datasource.py --ticker 7203
 |---|---|
 | `lib/datasource.py` | 株価取得アダプタ (yfinance)。データ源の差し替えはこのファイルに閉じる |
 | `lib/indicators.py` | 指標エンジン (RSI / MACD / EMA / BB / ATR / StochRSI / OBV / ADX) |
+| `lib/earnings.py` | 決算注記 (`analyze.py` と `screen.py` が共用) |
 | `lib/holdings.py` | 保有の読み込み (read-only) |
 | `config/universe.py` | 探索ユニバースとパラメータ |
 | `config/watchlist.example.py` | ウォッチリストの雛形 (本体 `watchlist.py` は追跡対象外) |

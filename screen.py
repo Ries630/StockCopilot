@@ -23,6 +23,7 @@
     uv run screen.py                     # JP + US 全ユニバース
     uv run screen.py --market jp         # 日本株のみ
     uv run screen.py --include-held      # 保有銘柄も母集団に含める
+    uv run screen.py --earnings          # 候補に決算日を併記
     uv run screen.py --json              # JSON 出力
 """
 
@@ -41,6 +42,7 @@ from config.universe import (
     WATCHLIST_US,
 )
 from lib.datasource import fetch_ohlcv
+from lib.earnings import earnings_note
 from lib.holdings import held_tickers
 from lib.indicators import daily_stats
 
@@ -144,11 +146,31 @@ def screen_one(ticker: str, market: str) -> dict | None:
     }
 
 
+def attach_earnings(candidates: list[dict]) -> None:
+    """候補に決算注記を付ける (破壊的更新)。
+
+    決算はギャップ要因で、確定足ベースのトリガーを飛び越えて執行不能にする。
+    候補に絞ってから呼ぶ: yfinance は 1 銘柄 1 リクエストで、母集団全体に
+    かけると通過しない銘柄の分まで待つことになる。
+
+    Args:
+        candidates: screen_one() の戻り値のリスト。
+    """
+    for c in candidates:
+        # 1 銘柄の取得失敗で候補全体を落とさない (決算の有無は候補の採否と別)
+        try:
+            c["earnings_note"] = earnings_note(c["ticker"], c["market"])
+        except Exception:
+            c["earnings_note"] = ""
+
+
 def main() -> None:
     """ユニバースを機械条件にかけ、候補を score 順で表示する。"""
     ap = argparse.ArgumentParser(description="株式候補の機械スクリーニング")
     ap.add_argument("--market", default="all", choices=["jp", "us", "all"])
     ap.add_argument("--include-held", action="store_true", help="保有銘柄も母集団に含める")
+    ap.add_argument("--earnings", action="store_true",
+                    help="候補の決算日も取得する (候補 1 件につき 1 リクエスト増える)")
     ap.add_argument("--json", action="store_true", help="JSON で出力")
     args = ap.parse_args()
 
@@ -165,6 +187,8 @@ def main() -> None:
 
     candidates.sort(key=lambda r: -r["score"])
     candidates = candidates[:MAX_CANDIDATES]
+    if args.earnings:
+        attach_earnings(candidates)
 
     if args.json:
         print(json.dumps({
@@ -190,6 +214,8 @@ def main() -> None:
         print(f"  {c['ticker']:<8} {cur}{c['close']:<12,.2f} 直近足 {c['change_pct']:+.2f}% "
               f"[score {c['score']:.1f} ATR]")
         print(f"    {' / '.join(c['reasons'])}")
+        if c.get("earnings_note"):
+            print(f"    {c['earnings_note']}")
         print(f"    20日レンジ {c['low20']:,.2f}〜{c['high20']:,.2f} "
               f"(終値位置 {c['range_pos']:.0%}) / ATR {c['atr_pct']:.1f}% "
               f"/ 売買代金20日平均 {cur}{c['turnover_avg20']:,.0f}\n")
