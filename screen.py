@@ -11,8 +11,10 @@
 
 通過条件 (いずれかの「事象」が起きた銘柄のみ):
   - 直近確定足の変化率が日次 ATR の MIN_MOVE_IN_ATR 倍以上
-  - 確定終値が直前 20 日レンジを上抜け / 下抜け
+  - 確定終値が直前 20 日レンジを MIN_BREAK_IN_ATR 倍以上 上抜け / 下抜け
 「レンジの端に近い」は状態であって事象ではないので条件にしない。
+どちらの条件も ATR 単位の下限を持たせている。突破側に下限が無いと、
+わずかに超えただけの銘柄が通り、避けたはずの「端にいる」状態を拾うことになる。
 
 母集団はウォッチリスト (config/watchlist.py) + 探索ユニバース (config/universe.py)。
 保有銘柄は既定で除外する (--include-held で含められる)。
@@ -29,6 +31,7 @@ import json
 
 from config.universe import (
     MAX_CANDIDATES,
+    MIN_BREAK_IN_ATR,
     MIN_MOVE_IN_ATR,
     MIN_TURNOVER_JPY,
     MIN_TURNOVER_USD,
@@ -114,14 +117,14 @@ def screen_one(ticker: str, market: str) -> dict | None:
     else:
         break_atr, break_dir = 0.0, ""
 
-    # score は「通過した条件」だけから取る。閾値未満の move_atr を max() で拾うと
-    # 理由欄 (ブレイクのみ) と点数が食い違い、候補間で順位の意味が壊れる
+    # score は「通過した条件」だけから取る。閾値未満の値を max() で拾うと
+    # 理由欄と点数が食い違い、候補間で順位の意味が壊れる
     reasons = []
     passed = []
     if move_atr >= MIN_MOVE_IN_ATR:
         reasons.append(f"直近足の動きが日次 ATR の {move_atr:.1f} 倍")
         passed.append(move_atr)
-    if break_atr:
+    if break_atr >= MIN_BREAK_IN_ATR:
         reasons.append(f"20 日レンジを{break_dir}に突破 (ATR {break_atr:.1f} 倍)")
         passed.append(break_atr)
     if not passed:
@@ -169,6 +172,7 @@ def main() -> None:
             "candidates": candidates,
             "params": {
                 "min_move_in_atr": MIN_MOVE_IN_ATR,
+                "min_break_in_atr": MIN_BREAK_IN_ATR,
                 "min_turnover_jpy": MIN_TURNOVER_JPY,
                 "min_turnover_usd": MIN_TURNOVER_USD,
             },
