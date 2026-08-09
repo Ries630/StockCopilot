@@ -4,7 +4,7 @@
 # ///
 """保有/指定銘柄のテクニカル分析 (TradingCopilot swing/_analyze.py の株式版)。
 
-対象銘柄はコマンドライン引数で渡す (例: uv run analyze.py 9433 AAPL)。
+対象銘柄はコマンドライン引数で渡す (例: uv run analyze.py 7203 AAPL)。
 省略時は Investment の保有銘柄すべて。
 
 時間足は日足 + 週足 (crypto の 1h/4h/1d に対して、株式のスイングでは

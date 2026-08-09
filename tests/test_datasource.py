@@ -22,9 +22,8 @@ from lib.datasource import (
 @pytest.mark.parametrize(
     ("ticker", "expected"),
     [
-        ("9433", "jp"),      # 4 桁数字 = JP
-        ("9433.T", "jp"),    # サフィックス付きでも JP
-        ("7203", "jp"),
+        ("7203", "jp"),      # 4 桁数字 = JP
+        ("7203.T", "jp"),    # サフィックス付きでも JP
         ("AAPL", "us"),
         ("aapl", "us"),      # 小文字も判定できる
         ("VTI", "us"),
@@ -40,9 +39,9 @@ def test_detect_market(ticker: str, expected: str) -> None:
 @pytest.mark.parametrize(
     ("ticker", "market", "expected"),
     [
-        ("9433", "jp", "9433.T"),
-        ("9433.T", "jp", "9433.T"),   # 二重付与しない
-        ("9433.t", "jp", "9433.T"),   # 小文字サフィックスも正規化される
+        ("7203", "jp", "7203.T"),
+        ("7203.T", "jp", "7203.T"),   # 二重付与しない
+        ("7203.t", "jp", "7203.T"),   # 小文字サフィックスも正規化される
         ("AAPL", "us", "AAPL"),
         ("aapl", "us", "AAPL"),
         (" 7203 ", "jp", "7203.T"),   # 前後の空白を落とす
