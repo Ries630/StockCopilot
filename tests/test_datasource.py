@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 import pandas as pd
 import pytest
 
 from lib.datasource import (
     MARKET_CONFIG,
+    _quiet_yfinance,
     detect_market,
     drop_forming_bar,
     normalize_ticker,
@@ -136,3 +138,24 @@ def test_drop_forming_bar_weekly_keeps_completed_week() -> None:
     df = _frame([dt.datetime(2026, 7, 27), dt.datetime(2026, 8, 3)], tz)
     now = dt.datetime(2026, 8, 7, 16, 30, tzinfo=tz)
     assert len(drop_forming_bar(df, "1wk", "jp", now=now)) == 2
+
+
+# --- _quiet_yfinance: ETF の 404 ログ抑制 ---
+
+
+def test_quiet_yfinance_silences_inside() -> None:
+    """ブロック内では yfinance のログが CRITICAL まで抑制される。"""
+    logger = logging.getLogger("yfinance")
+    logger.setLevel(logging.WARNING)
+    with _quiet_yfinance():
+        assert logger.level == logging.CRITICAL
+    assert logger.level == logging.WARNING
+
+
+def test_quiet_yfinance_restores_on_exception() -> None:
+    """例外で抜けてもレベルを戻す (以降の失敗ログを黙らせない)。"""
+    logger = logging.getLogger("yfinance")
+    logger.setLevel(logging.INFO)
+    with pytest.raises(RuntimeError), _quiet_yfinance():
+        raise RuntimeError("取得に失敗")
+    assert logger.level == logging.INFO
