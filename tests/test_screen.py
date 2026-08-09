@@ -1,12 +1,16 @@
-"""screen.py の母集団構築のテスト (ネットワークアクセスなし)。
+"""screen.py の母集団構築と通過判定のテスト (ネットワークアクセスなし)。
 
 母集団の組み立ては「何を取りに行くか」を決めており、
 ここが崩れると保有銘柄の混入 (public リポジトリ規範に関わる) や
 同一銘柄の二重取得 (yfinance は 1 銘柄 1 リクエスト) が起きる。
+
+通過判定は「候補の定義」そのもので、閾値が効かなくなると候補が緩み、
+分析工数を無駄に食う。閾値は境界を明示的に固定する。
 """
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 import screen
@@ -74,3 +78,78 @@ def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(screen, "held_tickers", _raise)
     assert screen.build_universe("jp", False) == [("1111", "jp")]
+
+
+# --- screen_one: 通過判定 ---
+#
+# atr_pct=1.0 に固定してあるので、変化率 (%) がそのまま move_atr になる。
+# atr=10.0 なので、20 日レンジからの超過額 10.0 が break_atr 1.0 に対応する。
+_BASE_STATS = {
+    "atr": 10.0,
+    "atr_pct": 1.0,
+    "high20": 499.0,
+    "low20": 400.0,
+    "range_pos": 1.0,
+    "turnover_avg20": 1e9,
+    "closed_bars": 60,
+}
+
+
+def _patch_bar(
+    monkeypatch: pytest.MonkeyPatch, closes: list[float], **stats_override: float
+) -> None:
+    """終値 2 本と統計を差し替える (yfinance を叩かせない)。"""
+    df = pd.DataFrame({"close": closes})
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
+    monkeypatch.setattr(screen, "daily_stats", lambda _df: {**_BASE_STATS, **stats_override})
+
+
+def test_marginal_break_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ノイズ幅の突破 (0.02 ATR) は候補にしない。#3 の実測ケース。"""
+    _patch_bar(monkeypatch, [499.0, 499.2])
+    assert screen.screen_one("TEST", "us") is None
+
+
+def test_break_at_threshold_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """閾値ちょうどの突破は通す (境界は通過側)。"""
+    _patch_bar(monkeypatch, [501.9, 502.0])  # 499.0 + 3.0 = 0.3 ATR
+    row = screen.screen_one("TEST", "us")
+    assert row is not None
+    assert row["break_in_atr"] == pytest.approx(screen.MIN_BREAK_IN_ATR)
+    assert "突破" in row["reasons"][0]
+
+
+def test_marginal_break_excluded_from_reasons(monkeypatch: pytest.MonkeyPatch) -> None:
+    """変化率だけで通った候補に、閾値未満の突破を理由として混ぜない。"""
+    _patch_bar(monkeypatch, [480.0, 499.2])  # move 4.0 ATR / break 0.02 ATR
+    row = screen.screen_one("TEST", "us")
+    assert row is not None
+    assert row["reasons"] == ["直近足の動きが日次 ATR の 4.0 倍"]
+    assert row["score"] == pytest.approx(4.0)
+
+
+def test_downside_break_uses_same_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """下抜けも同じ閾値で判定する (方向で非対称にしない)。"""
+    _patch_bar(monkeypatch, [396.2, 396.0])  # 400.0 - 4.0 = 0.4 ATR
+    row = screen.screen_one("TEST", "us")
+    assert row is not None
+    assert "下に突破" in row["reasons"][0]
+
+
+def test_marginal_downside_break_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """下抜けもノイズ幅なら候補にしない。"""
+    _patch_bar(monkeypatch, [399.1, 399.0])  # 0.1 ATR
+    assert screen.screen_one("TEST", "us") is None
+
+
+def test_threshold_comes_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """閾値は設定値を参照する (ハードコードしていない)。"""
+    _patch_bar(monkeypatch, [499.0, 499.2])
+    monkeypatch.setattr(screen, "MIN_BREAK_IN_ATR", 0.0)
+    assert screen.screen_one("TEST", "us") is not None
+
+
+def test_illiquid_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """流動性フロア未満は突破していても候補にしない。"""
+    _patch_bar(monkeypatch, [501.9, 502.0], turnover_avg20=1e7)
+    assert screen.screen_one("TEST", "us") is None
