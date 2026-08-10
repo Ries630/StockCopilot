@@ -6,40 +6,26 @@
 証券会社の取引 API を追加しないことをプロジェクトの規範としている。
 
 仮想通貨向けの兄弟プロジェクト TradingCopilot から指標エンジンを移植しているが、
-コードは共有せずコピー流用している (資産クラスごとにデータ源・市場時間・
-リスクの前提が違うため、共通化より独立を優先する)。
+コードは共有せずコピー流用している。
 
 ## 設計の要点
 
-### 確定足だけを使う
+理由・却下した代替・その時点の測定値は [`docs/adr/`](docs/adr/README.md) にある。
+ここには結論だけを置く。
 
-ブレイクアウトの判定は形成中の足を混ぜると「抜けた」が引け後に戻る誤検知になる。
-`lib/datasource.py` の `drop_forming_bar()` が、市場ごとの引け時刻
-(JP 15:30 JST / US 16:00 ET、いずれも 30 分のバッファ付き) で未確定の足を落とす。
-24/7 の仮想通貨と違い、株式は取引所カレンダーに従う必要がある。
+| 決定 | ADR |
+|---|---|
+| 独立した兄弟プロジェクトとして立て、指標エンジンはコピー流用する | [0001](docs/adr/0001-separate-sibling-project.md) |
+| 依存は PEP 723 のインライン宣言に書き、uv で走らせる | [0003](docs/adr/0003-uv-pep723-inline-deps.md) |
+| JP/US とも yfinance を使い、差し替え点を 2 関数に閉じる | [0004](docs/adr/0004-yfinance-as-data-source.md) |
+| 判定は確定足のみで行う (look-ahead 防止) | [0005](docs/adr/0005-completed-bars-only.md) |
+| スクリーナーは買いを判定せず、候補を絞るだけにする | [0006](docs/adr/0006-screener-does-not-decide-buys.md) |
+| 保有情報と売買意図をリポジトリに残さない | [0008](docs/adr/0008-no-holdings-in-repo.md) |
+| 決算日はトリガーの有効性を判断するために取得する | [0009](docs/adr/0009-earnings-date-as-trigger-validity.md) |
+| 母集団を 3 層にし、ウォッチリストは追跡対象外にする | [0010](docs/adr/0010-three-layer-universe.md) |
+| 通過条件は状態ではなく事象にし、突破幅に下限を置く | [0011](docs/adr/0011-event-based-screen-thresholds.md) |
 
-### 決算日をトリガーの有効性として扱う
-
-決算はギャップ要因であり、「日足終値で X を割ったら」という確定足ベースのトリガーを
-**飛び越えて執行不能にする**。`analyze.py` は決算日を併記し、前後 7 日以内なら警告する。
-日程を知らせるためではなく、そのトリガーが機能するかを判断するための情報として出す。
-
-### 保有情報をリポジトリに持たない
-
-このリポジトリは public である。保有銘柄・株数・口座名は一切コミットしない。
-保有は実行時に `lib/holdings.py` が別プロジェクト (Investment) の生成 JSON を
-read-only で読むだけで、リポジトリ側には持たない。分析の継続記録である
-`journal/journal.md` も `.gitignore` 済みで、書式仕様 (`journal/README.md`) だけを追跡する。
-ウォッチリスト (`config/watchlist.py`) は保有ではないが購入意図そのものなので同じ扱いにし、
-雛形 (`config/watchlist.example.py`) だけを追跡する。
-
-CI に追跡状況のチェックを入れ、目視レビューに頼らず機械的に担保している。
-
-### スクリーナーは「買い」を判定しない
-
-`screen.py` は機械条件で候補を絞るだけで、採否は必ず `analyze.py` の分析を通す。
-この分離により、スクリーナーが外しても失うのは分析 1 回分の工数だけで済む。
-候補ゼロは正常な出力であり、埋め草の候補を作らない。
+一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 
 ## 環境
 
@@ -61,8 +47,8 @@ cd StockCopilot
 cp config/watchlist.example.py config/watchlist.py
 ```
 
-このファイルは `.gitignore` 済みで、CI でも追跡されていないことを検査している。
-購入意図はリポジトリに残さない (「保有情報をリポジトリに持たない」と同じ理由)。
+このファイルは `.gitignore` 済みで、CI でも追跡されていないことを検査している
+([ADR-0008](docs/adr/0008-no-holdings-in-repo.md) / [ADR-0010](docs/adr/0010-three-layer-universe.md))。
 作らなくても空リスト扱いで動く。
 
 ## 使い方
@@ -99,15 +85,14 @@ uv run lib/datasource.py --ticker 7203
 | `analyze.py` | 保有・指定銘柄のテクニカル分析 |
 | `journal/README.md` | 分析ジャーナルの書式仕様 (本体は追跡対象外) |
 | `tests/` | テスト (ネットワークアクセスなし) |
+| `docs/adr/` | 設計判断の記録 (ADR) |
 
 ## データ源
 
 JP・US とも **yfinance**。JP は 4 桁コードを `{code}.T` に正規化する。
-
-J-Quants への差し替えは検証済みだが現状見送っている。無料プランは約 12 週の
-データ遅延があり、ライブのスクリーニングに使えないため (Light プラン契約時のみ
-JP アダプタを差し替える)。差し替え先は `lib/datasource.py` の
-`fetch_ohlcv()` / `fetch_next_earnings()` の 2 関数に閉じている。
+差し替え先は `lib/datasource.py` の `fetch_ohlcv()` / `fetch_next_earnings()` の
+2 関数に閉じている。J-Quants は検証済みだが現状見送っている
+→ [ADR-0004](docs/adr/0004-yfinance-as-data-source.md)
 
 ## 開発
 
@@ -129,6 +114,11 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 呼ばれることを前提にしている (スキル定義そのものはリポジトリ外)。
 
 - `stock-check` — 保有株のテクニカル分析とシナリオ追跡。ジャーナルに継続記録を残す
-- `stock-screen` — ユニバースからの候補抽出 (未作成。現状は `screen.py` を直接実行する)
+- `stock-screen` — ウォッチリストと探索ユニバースからの候補抽出
 
 スキルなしでも上記のコマンドとして単体で動作する。
+
+## 設計判断の記録
+
+[`docs/adr/`](docs/adr/README.md) に ADR として残している。判断を変えるときは本文を
+書き換えず、新しい ADR を書いて古い方のステータスを `廃止` に変える。
