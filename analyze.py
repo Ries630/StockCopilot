@@ -64,31 +64,55 @@ def analyze_symbol(ticker: str, market: str, label: str = "") -> None:
         print(json.dumps(ind, default=str, ensure_ascii=False))
 
 
+def freshness(as_of: str) -> str:
+    """as_of と経過日数を 1 行ぶんの文字列にする。
+
+    STALE_DAYS を超えた場合だけ警告を付ける。as_of が古いこと自体は
+    運用上の既定なので、常時点灯させると警告として機能しなくなる。
+
+    Args:
+        as_of: ISO 形式の基準日。空文字や不正な値も受け付ける。
+
+    Returns:
+        表示用の 1 行 (例: "as_of=2026-07-22 (19 日前)")。
+    """
+    label = f"as_of={as_of or '不明'}"
+    try:
+        days = (dt.date.today() - dt.date.fromisoformat(as_of)).days
+    except ValueError:
+        return f"{label} (経過日数を判定できない。増減の判定は保留すること)"
+    if days > STALE_DAYS:
+        return (
+            f"{label} ({days} 日前) "
+            f"⚠ {STALE_DAYS} 日超。執行記録の網羅性を確認し、Investment の同期を検討すること"
+        )
+    return f"{label} ({days} 日前)"
+
+
 def print_holdings_header(holdings: list[dict]) -> None:
     """保有データの鮮度 (as_of と経過日数) を表示する。
 
     鮮度を毎回目に見える形で出すのは、古い保有データを最新と誤認したまま
     増減を語るのを防ぐため。判定できない場合もその旨を出し、黙って進めない。
 
-    as_of が古いこと自体は運用上の既定なので、警告ではなく突合の指示を毎回添える。
-    警告は STALE_DAYS を超えた場合だけに絞る (常時点灯すると警告が機能しなくなる)。
+    **基準日は資産クラスごとに異なりうる** (証券口座と自動運用口座で数週間ずれる)。
+    1 つに丸めると古いほうが新しく見えるため、異なる場合は分けて出す。
 
     Args:
         holdings: load_holdings() の戻り値 (1 件以上)。
     """
-    as_of = holdings[0].get("as_of") or ""
-    head = f"保有 {len(holdings)} 銘柄 / Investment as_of={as_of or '不明'}"
-    try:
-        days = (dt.date.today() - dt.date.fromisoformat(as_of)).days
-    except ValueError:
-        print(f"{head} (経過日数を判定できない。増減の判定は保留すること)\n")
-        return
-    stale = (
-        f" ⚠ {STALE_DAYS} 日超。執行記録の網羅性を確認し、Investment の同期を検討すること"
-        if days > STALE_DAYS
-        else ""
-    )
-    print(f"{head} ({days} 日前){stale}")
+    groups: dict[str, list[dict]] = {}
+    for h in holdings:
+        groups.setdefault(h.get("as_of") or "", []).append(h)
+
+    head = f"保有 {len(holdings)} 銘柄 / Investment"
+    if len(groups) == 1:
+        print(f"{head} {freshness(next(iter(groups)))}")
+    else:
+        print(f"{head} as_of は資産クラスで異なる")
+        for as_of, members in sorted(groups.items()):
+            sources = sorted({m.get("as_of_source") or "?" for m in members})
+            print(f"  {freshness(as_of)} — {len(members)} 銘柄 ({', '.join(sources)})")
     print(f"  {LEDGER_NOTE}\n")
 
 

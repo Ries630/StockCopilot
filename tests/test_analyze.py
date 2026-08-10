@@ -66,6 +66,28 @@ def test_holdings_header_stale_warns(capsys: pytest.CaptureFixture[str]) -> None
     assert "執行記録の網羅性" in out
 
 
+def test_holdings_header_splits_differing_as_of(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """基準日が資産クラスで異なる場合は分けて出す。
+
+    1 つに丸めると、別系統で管理されている銘柄が実際より新しく見える。
+    どちらの日付も、それぞれの銘柄数と出所つきで見えている必要がある。
+    """
+    recent = (dt.date.today() - dt.timedelta(days=5)).isoformat()
+    older = (dt.date.today() - dt.timedelta(days=40)).isoformat()
+    analyze.print_holdings_header([
+        {"as_of": recent, "as_of_source": "stock_as_of"},
+        {"as_of": recent, "as_of_source": "stock_as_of"},
+        {"as_of": older, "as_of_source": "other_as_of"},
+    ])
+    out = capsys.readouterr().out
+    assert "保有 3 銘柄" in out
+    assert "資産クラスで異なる" in out
+    assert "(5 日前) — 2 銘柄 (stock_as_of)" in out
+    assert "(40 日前) — 1 銘柄 (other_as_of)" in out
+
+
 @pytest.mark.parametrize("holding", [{"as_of": ""}, {"as_of": None}, {}])
 def test_holdings_header_unparseable_as_of(
     holding: dict, capsys: pytest.CaptureFixture[str]
