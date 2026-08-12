@@ -39,7 +39,11 @@ uv run --with ruff ruff check .  # lint
 - `lib/indicators.py` — 指標エンジン (TradingCopilot `swing/_analyze.py` から移植。pandas + ta)
 - `lib/earnings.py` — 決算注記。analyze.py と screen.py が共用 (警告期間と文言の正)
   → [ADR-0012](docs/adr/0012-shared-earnings-module.md)
-- `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)
+- `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)。
+  `held_tickers()` はジャーナルの執行記録と合成した**実効保有**を返す
+  → [ADR-0015](docs/adr/0015-journal-executions-machine-read.md)
+- `lib/journal.py` — ジャーナルの `### 執行` を読むパーサ (約定日 / 銘柄 / 残株数の 3 項目のみ)。
+  書式の正は `journal/README.md`
 - `config/universe.py` — 探索ユニバースとパラメータ。母集団は
   ウォッチリスト / 探索ユニバース / 保有 (除外) の 3 層
   → [ADR-0010](docs/adr/0010-three-layer-universe.md)
