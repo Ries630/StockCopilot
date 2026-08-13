@@ -17,6 +17,7 @@ from lib.datasource import (
     _quiet_yfinance,
     detect_market,
     drop_forming_bar,
+    normalize_instrument_type,
     normalize_ticker,
 )
 
@@ -52,6 +53,23 @@ def test_detect_market(ticker: str, expected: str) -> None:
 def test_normalize_ticker(ticker: str, market: str, expected: str) -> None:
     """yfinance 用シンボルへ正規化できる。"""
     assert normalize_ticker(ticker, market) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("EQUITY", "equity"),      # yfinance が個別株に返す値 (AAPL / 7203.T で実測)
+        ("ETF", "etf"),            # 同 ETF (VTI / 1306.T で実測)
+        ("etf", "etf"),            # 大小文字は問わない
+        (" ETF ", "etf"),
+        ("MUTUALFUND", None),      # 未対応の種別は判定できない扱いにする
+        ("", None),
+        (None, None),              # メタデータに項目が無い場合
+    ],
+)
+def test_normalize_instrument_type(raw: str | None, expected: str | None) -> None:
+    """yfinance の instrumentType を上位の語彙に正規化できる。"""
+    assert normalize_instrument_type(raw) == expected
 
 
 def _frame(dates: list[dt.datetime], tz) -> pd.DataFrame:

@@ -164,6 +164,53 @@ def _quiet_yfinance():
         logger.setLevel(previous)
 
 
+# yfinance が返す instrumentType を、上位で使う語彙に正規化するための対応表。
+# データ源固有の語彙をこのファイルより上に漏らさない (差し替え時に触る範囲を閉じるため)。
+# 投資信託など、ここに無い種別は「判定できない」= None に倒す
+_INSTRUMENT_TYPES = {"EQUITY": "equity", "ETF": "etf"}
+
+
+def normalize_instrument_type(raw: str | None) -> str | None:
+    """yfinance の instrumentType を "equity" / "etf" に正規化する。
+
+    Args:
+        raw: yfinance が返す種別 ("EQUITY" / "ETF" など)。None も受け付ける。
+
+    Returns:
+        "equity" または "etf"。対応表に無ければ None。
+    """
+    return _INSTRUMENT_TYPES.get((raw or "").strip().upper())
+
+
+def fetch_instrument_type(ticker: str, market: str | None = None) -> str | None:
+    """銘柄種別 (個別株か ETF か) を返す。
+
+    決算日が取れなかったときに、**ETF なので存在しない**のか
+    **個別株なのに取得できなかった**のかを切り分けるために使う。後者は決算を
+    またぐギャップの可能性が残るため、出力に出す必要がある
+    (→ ADR-0016)。1 銘柄 1 リクエストなので、呼ぶ側は決算日が
+    取れなかった銘柄だけに絞ること。
+
+    Args:
+        ticker: 生ティッカー ("7203", "AAPL")。
+        market: "jp" / "us"。省略時は detect_market() で推定。
+
+    Returns:
+        "equity" / "etf"。取得できない、または未対応の種別なら None。
+    """
+    import yfinance as yf  # import が遅いので使用時に読み込む
+
+    market = market or detect_market(ticker)
+    symbol = normalize_ticker(ticker, market)
+    try:
+        # history_metadata は価格チャートのメタデータで、ETF でも 404 にならない。
+        # ログを抑制しないのは、ここでの失敗が本物の取得失敗だけだから
+        meta = yf.Ticker(symbol).history_metadata or {}
+    except Exception:
+        return None
+    return normalize_instrument_type(meta.get("instrumentType"))
+
+
 def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | None:
     """次回 (未来) または直近 (過去) の決算発表日を返す。
 
@@ -177,6 +224,8 @@ def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | Non
 
     Returns:
         決算日。ETF など決算の概念が無い銘柄、取得失敗時は None。
+        この 2 つは戻り値では区別できないので、切り分けが要るときは
+        fetch_instrument_type() を併用する (→ ADR-0016)。
     """
     import yfinance as yf  # import が遅いので使用時に読み込む
 
