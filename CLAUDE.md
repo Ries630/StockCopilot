@@ -52,9 +52,11 @@ uv run --with ruff ruff check .  # lint
   → [ADR-0010](docs/adr/0010-three-layer-universe.md)
 - `config/watchlist.py` — ウォッチリスト (保有検討中)。**追跡対象外**。
   雛形は `config/watchlist.example.py`。未作成なら空リスト扱い
-- `screen.py` — 候補の機械スクリーニング (買い判定はしない。候補を絞るだけ)
+- `screen.py` — 候補の機械スクリーニング (**コードは**買い判定をしない。候補を絞るだけ)
   → [ADR-0006](docs/adr/0006-screener-does-not-decide-buys.md)。通過条件は状態ではなく事象
-  → [ADR-0011](docs/adr/0011-event-based-screen-thresholds.md)
+  → [ADR-0011](docs/adr/0011-event-based-screen-thresholds.md)。
+  **レポート側は `判断: 買い` まで書く** (コードの分離とは別の問題)
+  → [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
@@ -79,7 +81,8 @@ uv run --with ruff ruff check .  # lint
 
 - 発注コード・証券会社の取引 API を追加しない (このプロジェクトのスコープ外)
 - `.env` を作る場合 (J-Quants 移行時) は `.gitignore` 登録を確認し、コミットしない
-- スクリーナーに裁量的な「買い判定」ロジックを足さない。候補の採否は分析 (analyze) を通す
+- **スクリーナーのコードに**裁量的な「買い判定」ロジックを足さない。候補の採否は分析 (analyze) を通す。
+  レポートに判断を書くことはこの禁止に含まれない → [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)
 
 ### public リポジトリ前提の規範
 
@@ -101,4 +104,6 @@ uv run --with ruff ruff check .  # lint
 - `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
   実体は `~/.claude/skills/stock-check/SKILL.md`
 - `stock-screen` — ウォッチリスト + 探索ユニバースから候補を機械抽出 (screen.py + journal)。
-  実体は `~/.claude/skills/stock-screen/SKILL.md`。**買い判定はしない**(採否は analyze を通す)
+  実体は `~/.claude/skills/stock-screen/SKILL.md`。候補には必ず analyze.py を通し、
+  レポートには `判断: 買い / 見送り / 決算後に再判定 / 保留` を書く
+  → [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)
