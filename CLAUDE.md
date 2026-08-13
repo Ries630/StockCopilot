@@ -32,6 +32,9 @@ uv run --with ruff ruff check .  # lint
   → [ADR-0005](docs/adr/0005-completed-bars-only.md)
 - **決算日はトリガーが有効かを判断するために取る** (日程を報告するためではない)
   → [ADR-0009](docs/adr/0009-earnings-date-as-trigger-validity.md)
+- **決算日を取得できなかった個別株は「不明」を出力に出す** (ETF は出さないのが正常)。
+  切り分けは `lib/datasource.py` の `fetch_instrument_type()`
+  → [ADR-0016](docs/adr/0016-surface-unavailable-earnings-date.md)
 
 ## 構成
 
