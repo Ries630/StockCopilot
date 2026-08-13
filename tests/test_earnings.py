@@ -22,10 +22,54 @@ def _patch_earnings(monkeypatch: pytest.MonkeyPatch, day: dt.date | None) -> Non
     monkeypatch.setattr(earnings, "fetch_next_earnings", lambda ticker, market: day)
 
 
-def test_earnings_note_empty_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """決算日が取れなければ行を出さない (ETF など)。"""
+def _patch_instrument_type(monkeypatch: pytest.MonkeyPatch, kind: str | None) -> None:
+    """fetch_instrument_type を差し替える (ネットワークに出ないようにする)。
+
+    Args:
+        kind: "etf" / "equity" / 判定できなかった場合の None。
+    """
+    monkeypatch.setattr(earnings, "fetch_instrument_type", lambda ticker, market: kind)
+
+
+def test_earnings_note_empty_for_etf(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ETF は決算の概念が無いので行を出さない。"""
     _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, "etf")
     assert earnings.earnings_note("VTI", "us") == ""
+
+
+def test_earnings_note_unknown_for_equity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """個別株で決算日が取れなければ「不明」を出す。
+
+    ここが空文字だと、読み手は「決算が無い」と「取得できなかった」を
+    区別できない。2026-08-10 に決算反応をテクニカルの進捗として読んだ事故の再発防止。
+    """
+    _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, "equity")
+    note = earnings.earnings_note("9999", "jp")
+    assert note == earnings.UNAVAILABLE_NOTE
+    assert note.startswith("⚠")
+    assert "不明" in note
+
+
+def test_earnings_note_unknown_when_type_undetermined(monkeypatch: pytest.MonkeyPatch) -> None:
+    """種別を判定できなかった場合も「不明」を出す (ETF と確定していない側に倒す)。"""
+    _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, None)
+    assert earnings.earnings_note("9999", "jp") == earnings.UNAVAILABLE_NOTE
+
+
+def test_earnings_note_skips_instrument_type_when_date_known(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """決算日が取れたら種別は取りに行かない (1 銘柄 1 リクエスト増えるため)。"""
+
+    def _boom(ticker: str, market: str) -> str:
+        raise AssertionError("決算日が取れているのに種別を取得した")
+
+    _patch_earnings(monkeypatch, dt.date.today())
+    monkeypatch.setattr(earnings, "fetch_instrument_type", _boom)
+    assert earnings.earnings_note("9999", "jp").startswith("⚠")
 
 
 def test_earnings_note_today(monkeypatch: pytest.MonkeyPatch) -> None:
