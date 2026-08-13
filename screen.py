@@ -17,7 +17,9 @@
 わずかに超えただけの銘柄が通り、避けたはずの「端にいる」状態を拾うことになる。
 
 母集団はウォッチリスト (config/watchlist.py) + 探索ユニバース (config/universe.py)。
-保有銘柄は既定で除外する (--include-held で含められる)。
+保有銘柄は既定で除外する (--include-held で含められる)。除外に使うのは
+Investment の as_of 時点の保有ではなく、ジャーナルの執行記録と合成した実効保有
+(lib/holdings.py の held_tickers)。
 
 使い方:
     uv run screen.py                     # JP + US 全ユニバース
@@ -43,11 +45,13 @@ from config.universe import (
 )
 from lib.datasource import fetch_ohlcv
 from lib.earnings import earnings_note
-from lib.holdings import held_tickers
+from lib.holdings import HeldTickers, held_tickers
 from lib.indicators import daily_stats
 
 
-def build_universe(market: str, include_held: bool) -> list[tuple[str, str]]:
+def build_universe(
+    market: str, include_held: bool
+) -> tuple[list[tuple[str, str]], HeldTickers | None]:
     """(ticker, market) のリストを返す。保有銘柄は既定で除外する。
 
     ウォッチリスト (保有検討中) を探索ユニバースより先に置く。取得順が
@@ -58,7 +62,9 @@ def build_universe(market: str, include_held: bool) -> list[tuple[str, str]]:
         include_held: True なら保有銘柄を除外しない。
 
     Returns:
-        [(ticker, market), ...] ティッカーの重複は除去済み。
+        ([(ticker, market), ...], 実効保有)。ティッカーの重複は除去済み。
+        実効保有は除外しなかった場合と保有データを読めなかった場合に None。
+        表示は呼び出し側に任せる (この関数は入出力を持たない)。
     """
     universe: list[tuple[str, str]] = []
     if market in ("jp", "all"):
@@ -76,13 +82,16 @@ def build_universe(market: str, include_held: bool) -> list[tuple[str, str]]:
             deduped.append((ticker, mkt))
     universe = deduped
 
-    if not include_held:
-        try:
-            held = held_tickers()
-        except FileNotFoundError:
-            held = set()
-        universe = [(t, m) for t, m in universe if t not in held]
-    return universe
+    if include_held:
+        return universe, None
+    try:
+        held = held_tickers()
+    except FileNotFoundError:
+        # 保有データが無い環境 (Investment 未生成) では除外せず続行する。
+        # 除外できなかったことは呼び出し側が None から判別する
+        return universe, None
+    universe = [(t, m) for t, m in universe if t not in held.tickers]
+    return universe, held
 
 
 def screen_one(ticker: str, market: str) -> dict | None:
@@ -164,6 +173,36 @@ def attach_earnings(candidates: list[dict]) -> None:
             c["earnings_note"] = ""
 
 
+def held_summary(held: HeldTickers | None, include_held: bool) -> str:
+    """保有除外の内訳を表示用の文字列にする。
+
+    除外に使った基準日と執行記録の件数を必ず出す。母集団から何が落ちたかが
+    見えないと、保有銘柄が候補に出たときに「記録漏れなのかデータが古いのか」を
+    切り分けられない。解釈できなかったジャーナルの行も同時に出す。
+
+    Args:
+        held: build_universe が返した実効保有 (除外しなかったなら None)。
+        include_held: --include-held が指定されたか。
+
+    Returns:
+        表示用の文字列 (複数行になりうる)。
+    """
+    if include_held:
+        return "保有除外なし (--include-held)"
+    if held is None:
+        return "[warn] 保有データを読めなかったため保有除外なし"
+    if held.executions_read:
+        note = f"執行記録 {held.executions_read} 件中 {held.executions_applied} 件を適用"
+    else:
+        note = "執行記録なし"
+    lines = [
+        f"保有 {len(held.tickers)} 銘柄を母集団から除外 "
+        f"(Investment as_of={held.as_of or '不明'} / {note})"
+    ]
+    lines += [f"  [warn] journal {w}" for w in held.warnings]
+    return "\n".join(lines)
+
+
 def main() -> None:
     """ユニバースを機械条件にかけ、候補を score 順で表示する。"""
     ap = argparse.ArgumentParser(description="株式候補の機械スクリーニング")
@@ -174,7 +213,9 @@ def main() -> None:
     ap.add_argument("--json", action="store_true", help="JSON で出力")
     args = ap.parse_args()
 
-    universe = build_universe(args.market, args.include_held)
+    universe, held = build_universe(args.market, args.include_held)
+    if not args.json:
+        print(held_summary(held, args.include_held))
     candidates = []
     for ticker, market in universe:
         try:
@@ -193,6 +234,15 @@ def main() -> None:
     if args.json:
         print(json.dumps({
             "screened": len(universe),
+            # 銘柄そのものは出さない (public リポジトリに貼られうる出力のため)。
+            # 除外が効いていたかを件数で確認できるだけにする
+            "held": {
+                "excluded": None if held is None else len(held.tickers),
+                "as_of": None if held is None else held.as_of,
+                "executions_read": None if held is None else held.executions_read,
+                "executions_applied": None if held is None else held.executions_applied,
+                "journal_warnings": [] if held is None else held.warnings,
+            },
             "candidates": candidates,
             "params": {
                 "min_move_in_atr": MIN_MOVE_IN_ATR,

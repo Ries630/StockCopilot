@@ -5,13 +5,23 @@ Investment 側とは module import せず、生成 JSON を読むだけの疎結
 ここで stock_splits.json を再適用してはならない (二重調整になる)。
 
 投資信託 (class=投資信託) は公開ティッカーが無くテクニカル分析の対象外なので除外する。
+
+スクリーナーの除外リスト (held_tickers) だけは Investment の値そのものではなく、
+ジャーナルの執行記録と合成した**実効保有**を返す
+([ADR-0015](../docs/adr/0015-journal-executions-machine-read.md))。
+
+    実効保有 = Investment の as_of 時点の保有 + as_of 以降の執行記録
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
+
+from lib.journal import Execution, load_executions
 
 INVESTMENT_OUTPUT = Path("~/Documents/Claude/Projects/Investment/output").expanduser()
 
@@ -78,6 +88,19 @@ def load_holdings() -> list[dict]:
         market は region から導出 ("日本"→"jp"、それ以外→"us")。
         as_of は口座に対応する資産クラスの基準日で、銘柄ごとに異なりうる。
     """
+    return _load_holdings()[0]
+
+
+def _load_holdings() -> tuple[list[dict], str]:
+    """保有の一覧と、既定の基準日 (stock.as_of) を返す。
+
+    既定の基準日を併せて返すのは実効保有の合成で要るため。銘柄ごとの as_of は
+    口座名から解決するが、**Investment に無い銘柄 (as_of 以降に新規購入した銘柄) には
+    口座が無い**ので、そこだけは既定の基準日で判定するしかない。
+
+    Returns:
+        (保有の一覧, 既定の基準日)。
+    """
     path = latest_report_path()
     data = json.loads(path.read_text())
     stock = data.get("stock", {})
@@ -101,9 +124,112 @@ def load_holdings() -> list[dict]:
             "as_of": as_of,
             "as_of_source": as_of_source,
         })
-    return out
+    return out, default_as_of
 
 
-def held_tickers() -> set[str]:
-    """保有ティッカーの集合を返す (スクリーナーの除外リスト用)。"""
-    return {h["ticker"] for h in load_holdings()}
+@dataclass(frozen=True)
+class HeldTickers:
+    """実効保有のティッカー集合と、その組み立ての内訳。
+
+    集合だけでなく内訳を返すのは、**合成が壊れたことに呼び出し側が気付ける**
+    ようにするため。ジャーナルは人が書く Markdown なので、書式ゆれで
+    除外が静かに不完全になるのが最悪の失敗になる。
+
+    Attributes:
+        tickers: 実効保有のティッカー集合 (除外フィルタに使う)。
+        as_of: Investment の既定の基準日。資産クラス別の基準日は銘柄ごとに
+            解決しており、これは表示用の代表値でしかない。
+        executions_read: ジャーナルから読めた執行の件数。
+        executions_applied: そのうち保有に反映した件数 (銘柄ごとに最新の 1 件)。
+        warnings: 解釈できなかった行の警告 ("N 行目: 理由")。
+    """
+
+    tickers: set[str]
+    as_of: str
+    executions_read: int
+    executions_applied: int
+    warnings: list[str]
+
+
+def held_tickers() -> HeldTickers:
+    """実効保有のティッカー集合を返す (スクリーナーの除外リスト用)。
+
+        実効保有 = Investment の as_of 時点の保有 + as_of 以降の執行記録
+
+    ジャーナルが無ければ Investment の保有そのものになる (執行 0 件)。
+
+    Returns:
+        HeldTickers。合成の内訳を含む。
+
+    Raises:
+        FileNotFoundError: Investment の report_data が 1 件も無い場合。
+    """
+    rows, default_as_of = _load_holdings()
+    executions, warnings = load_executions()
+    tickers = {h["ticker"] for h in rows}
+    as_of_by_ticker = {h["ticker"].upper(): h["as_of"] for h in rows}
+    original_by_upper = {h["ticker"].upper(): h["ticker"] for h in rows}
+
+    applied = _latest_executions(executions, as_of_by_ticker, default_as_of)
+    for key, execution in applied.items():
+        ticker = original_by_upper.get(key, key)
+        if execution.remaining > 0:
+            tickers.add(ticker)
+        else:
+            tickers.discard(ticker)
+
+    return HeldTickers(
+        tickers=tickers,
+        as_of=default_as_of,
+        executions_read=len(executions),
+        executions_applied=len(applied),
+        warnings=warnings,
+    )
+
+
+def _latest_executions(
+    executions: list[Execution], as_of_by_ticker: dict[str, str], default_as_of: str
+) -> dict[str, Execution]:
+    """銘柄ごとに、保有へ反映すべき執行 1 件を選ぶ。
+
+    残株数はその行だけで残高が確定する絶対値なので、差分を積み上げず
+    最新の 1 件だけを見ればよい (書式側が残株数の記載を必須にしている)。
+
+    Args:
+        executions: ジャーナルの出現順 (= 追記順) の執行記録。
+        as_of_by_ticker: 大文字ティッカー → その銘柄の基準日。
+        default_as_of: Investment に無い銘柄に使う既定の基準日。
+
+    Returns:
+        大文字ティッカー → 反映する執行。
+    """
+    latest: dict[str, Execution] = {}
+    for execution in executions:
+        base = as_of_by_ticker.get(execution.ticker, default_as_of)
+        # 基準日より前の執行は Investment の保有に既に含まれている。
+        # 同日はジャーナルを優先する: 誤る場合でも「探索対象が 1 つ減る」側に倒れる
+        if base and execution.date < _as_date(base):
+            continue
+        previous = latest.get(execution.ticker)
+        # 同日に複数行あれば後に書かれた行が勝つ (ジャーナルは追記専用)
+        if previous is None or execution.date >= previous.date:
+            latest[execution.ticker] = execution
+    return latest
+
+
+def _as_date(value: str) -> dt.date:
+    """基準日の文字列を date にする。解釈できなければ date.min。
+
+    date.min を返すのは、基準日が壊れているときに執行記録を落とさないため。
+    比較に使う側では「すべての執行が基準日以降」として扱われる。
+
+    Args:
+        value: ISO 形式の日付文字列。
+
+    Returns:
+        date。不正な値なら date.min。
+    """
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError:
+        return dt.date.min

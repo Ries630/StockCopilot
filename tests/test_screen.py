@@ -14,6 +14,20 @@ import pandas as pd
 import pytest
 
 import screen
+from lib.holdings import HeldTickers
+
+
+def _held(tickers: set[str] | None = None, **overrides) -> HeldTickers:
+    """held_tickers() の戻り値を組み立てる (実保有・実ジャーナルに依存させない)。"""
+    fields = {
+        "tickers": set(tickers or ()),
+        "as_of": "2026-07-22",
+        "executions_read": 0,
+        "executions_applied": 0,
+        "warnings": [],
+    }
+    fields.update(overrides)
+    return HeldTickers(**fields)
 
 
 def _patch_lists(
@@ -30,43 +44,43 @@ def _patch_lists(
     monkeypatch.setattr(screen, "WATCHLIST_US", watch_us or [])
     monkeypatch.setattr(screen, "UNIVERSE_JP", uni_jp or [])
     monkeypatch.setattr(screen, "UNIVERSE_US", uni_us or [])
-    monkeypatch.setattr(screen, "held_tickers", lambda: held or set())
+    monkeypatch.setattr(screen, "held_tickers", lambda: _held(held))
 
 
 def test_watchlist_is_included(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストは探索ユニバースと並んで母集団に入る。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"])
-    assert screen.build_universe("jp", False) == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [("1111", "jp"), ("2222", "jp")]
 
 
 def test_watchlist_comes_first(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストを先に取りに行く (優先度の高い層から到達させる)。"""
     _patch_lists(monkeypatch, watch_us=["WWW"], uni_us=["UUU"])
-    assert [t for t, _ in screen.build_universe("us", False)] == ["WWW", "UUU"]
+    assert [t for t, _ in screen.build_universe("us", False)[0]] == ["WWW", "UUU"]
 
 
 def test_duplicates_are_removed(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストと探索ユニバースの重複は 1 回だけ取りに行く。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["1111", "2222"])
-    assert screen.build_universe("jp", False) == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [("1111", "jp"), ("2222", "jp")]
 
 
 def test_held_excluded_from_watchlist(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリスト銘柄も保有になれば既定で落ちる (買い済みは候補にしない)。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"], held={"1111"})
-    assert screen.build_universe("jp", False) == [("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [("2222", "jp")]
 
 
 def test_include_held_keeps_watchlist(monkeypatch: pytest.MonkeyPatch) -> None:
     """--include-held では保有と重なるウォッチリスト銘柄も残る。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"], held={"1111"})
-    assert screen.build_universe("jp", True) == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", True)[0] == [("1111", "jp"), ("2222", "jp")]
 
 
 def test_market_filter_splits_layers(monkeypatch: pytest.MonkeyPatch) -> None:
     """--market jp は JP 側のウォッチリストと探索ユニバースだけを組む。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], watch_us=["WWW"], uni_us=["UUU"])
-    assert screen.build_universe("jp", False) == [("1111", "jp")]
+    assert screen.build_universe("jp", False)[0] == [("1111", "jp")]
 
 
 def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -77,7 +91,43 @@ def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> Non
         raise FileNotFoundError("report_data_*.json が見つからない")
 
     monkeypatch.setattr(screen, "held_tickers", _raise)
-    assert screen.build_universe("jp", False) == [("1111", "jp")]
+    universe, held = screen.build_universe("jp", False)
+    assert universe == [("1111", "jp")]
+    assert held is None
+
+
+# --- held_summary: 除外の内訳の表示 ---
+#
+# 母集団から何が落ちたかが見えないと、保有銘柄が候補に出たときに
+# 「執行記録の漏れなのか、保有データが読めていないのか」を切り分けられない。
+
+
+def test_held_summary_shows_as_of_and_execution_counts() -> None:
+    """除外の内訳に基準日と執行記録の件数を出す。"""
+    text = screen.held_summary(_held({"1111"}, executions_read=3, executions_applied=2), False)
+    assert "2026-07-22" in text
+    assert "3 件中 2 件" in text
+
+
+def test_held_summary_states_when_no_executions() -> None:
+    """執行記録が無いことは明示する (拾い忘れと区別できるように)。"""
+    assert "執行記録なし" in screen.held_summary(_held({"1111"}), False)
+
+
+def test_held_summary_surfaces_journal_warnings() -> None:
+    """解釈できないジャーナルの行は警告として出力に載る (黙って落とさない)。"""
+    text = screen.held_summary(_held({"1111"}, warnings=["84 行目: 残株数 (`残 N株`) が読めない"]), False)
+    assert "[warn] journal 84 行目" in text
+
+
+def test_held_summary_warns_when_holdings_unreadable() -> None:
+    """保有を読めずに除外できなかったことは警告として出す。"""
+    assert screen.held_summary(None, False).startswith("[warn]")
+
+
+def test_held_summary_notes_include_held() -> None:
+    """--include-held では除外していないことを明示する。"""
+    assert "--include-held" in screen.held_summary(None, True)
 
 
 # --- screen_one: 通過判定 ---
