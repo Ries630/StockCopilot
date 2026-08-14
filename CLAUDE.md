@@ -52,8 +52,9 @@ uv run --with ruff ruff check .  # lint
   → [ADR-0010](docs/adr/0010-three-layer-universe.md)
 - `config/watchlist.py` — ウォッチリスト (保有検討中)。**追跡対象外**。
   雛形は `config/watchlist.example.py`。未作成なら空リスト扱い
-- `screen.py` — 候補の機械スクリーニング (買い判定はしない。候補を絞るだけ)
-  → [ADR-0006](docs/adr/0006-screener-does-not-decide-buys.md)。通過条件は状態ではなく事象
+- `screen.py` — 候補の機械スクリーニング。候補を絞るだけで、買い判断は analyze.py の
+  分析で行う → [ADR-0006](docs/adr/0006-screener-does-not-decide-buys.md) /
+  [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)。通過条件は状態ではなく事象
   → [ADR-0011](docs/adr/0011-event-based-screen-thresholds.md)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
@@ -100,5 +101,7 @@ uv run --with ruff ruff check .  # lint
 
 - `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
   実体は `~/.claude/skills/stock-check/SKILL.md`
-- `stock-screen` — ウォッチリスト + 探索ユニバースから候補を機械抽出 (screen.py + journal)。
-  実体は `~/.claude/skills/stock-screen/SKILL.md`。**買い判定はしない**(採否は analyze を通す)
+- `stock-screen` — ウォッチリスト + 探索ユニバースから候補を機械抽出し (screen.py)、
+  テクニカル分析で `買い / 見送り / 決算後に再判定 / 保留` を判断する (analyze.py + journal)。
+  実体は `~/.claude/skills/stock-screen/SKILL.md`
+  → [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)
