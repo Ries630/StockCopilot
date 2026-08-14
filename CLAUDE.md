@@ -57,6 +57,9 @@ uv run --with ruff ruff check .  # lint
   [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)。通過条件は状態ではなく事象
   → [ADR-0011](docs/adr/0011-event-based-screen-thresholds.md)
 - `analyze.py` — 保有/指定銘柄のテクニカル分析
+- `docs/output-contract.md` — **`screen.py` / `analyze.py` の出力の読み方の正**。
+  決算注記・保有の鮮度・警告の意味はここに集約する (スキル側に写経しない)
+  → [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
   実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは
