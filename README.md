@@ -8,6 +8,46 @@
 仮想通貨向けの兄弟プロジェクト TradingCopilot から指標エンジンを移植しているが、
 コードは共有せずコピー流用している。
 
+## 全体像
+
+候補を探す経路 (`stock-screen`) と、保有を点検する経路 (`stock-check`) の 2 本があり、
+分析エンジン `analyze.py` とジャーナルを共有する。
+
+```mermaid
+flowchart LR
+    subgraph POP["母集団 (3 層)"]
+        W["ウォッチリスト<br/>config/watchlist.py"]
+        U["探索ユニバース<br/>config/universe.py"]
+        HD["保有<br/>Investment の生成物<br/>+ ジャーナルの執行記録"]
+    end
+
+    W --> SC
+    U --> SC
+    HD -. 既定で除外 .-> SC
+
+    SC["screen.py<br/>機械スクリーニング"] --> CAND["候補"]
+    CAND -- stock-screen --> AN["analyze.py<br/>テクニカル分析<br/>確定足のみ"]
+    HD -- stock-check --> AN
+
+    AN -- stock-screen --> VS["買い / 見送り /<br/>決算後に再判定 / 保留"]
+    AN -- stock-check --> VC["ホールド / 積増し /<br/>部分利確 / 売却 / 保留"]
+    VS --> J["journal/journal.md<br/>追跡対象外"]
+    VC --> J
+```
+
+- **買う / 買わないの判断は `screen.py` には無い。** スクリーナーは候補を絞るだけで、
+  採否は `analyze.py` の分析を通す
+  ([ADR-0006](docs/adr/0006-screener-does-not-decide-buys.md) /
+  [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md))
+- **保有は経路によって役割が反転する。** `screen.py` では除外フィルタ、
+  `stock-check` では入力そのもの ([ADR-0010](docs/adr/0010-three-layer-universe.md))
+- **判断ラベルは 2 系統で別物。** 候補側と保有側で語彙を共有しない
+- **保有は Investment の生成物そのものではない。** `held_tickers()` がジャーナルの執行記録を
+  合成した実効保有を返す ([ADR-0015](docs/adr/0015-journal-executions-machine-read.md))
+
+`config/watchlist.py` と `journal/journal.md` は追跡対象外
+([ADR-0008](docs/adr/0008-no-holdings-in-repo.md))。
+
 ## 設計の要点
 
 理由・却下した代替・その時点の測定値は [`docs/adr/`](docs/adr/README.md) にある。
