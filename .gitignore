@@ -15,5 +15,8 @@ reports/
 # 分析ジャーナル本体: 保有銘柄・株数・売買判断の時系列が入る (書式は journal/README.md)
 journal/journal.md
 
+# 運用教訓: 実際の保有についての観測が実行のたびに積み上がる (→ docs/adr/0018)
+journal/lessons.md
+
 __pycache__/
 .DS_Store

@@ -151,12 +151,19 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 ## Claude Code スキル
 
 このリポジトリは [Claude Code](https://claude.com/claude-code) のスキルから
-呼ばれることを前提にしている (スキル定義そのものはリポジトリ外)。
+呼ばれることを前提にしている。スキル定義は `.claude/skills/` に同封してあるので、
+clone すればそのまま使える (このリポジトリを作業ディレクトリにしているときに読み込まれる)
+→ [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)
 
 - `stock-check` — 保有株のテクニカル分析とシナリオ追跡。ジャーナルに継続記録を残す
-- `stock-screen` — ウォッチリストと探索ユニバースからの候補抽出
+- `stock-screen` — ウォッチリストと探索ユニバースからの候補抽出と買い判断
 
 スキルなしでも上記のコマンドとして単体で動作する。
+
+出力をどう読むかの正は [`docs/output-contract.md`](docs/output-contract.md)、
+ジャーナルの書式と判断ラベルの正は [`journal/README.md`](journal/README.md) にあり、
+スキルはそこへリンクするだけにしている。運用して分かった教訓は追跡対象外の
+`journal/lessons.md` に置く (実際の保有についての観測を含むため)。
 
 ## 設計判断の記録
 
