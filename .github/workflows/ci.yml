@@ -21,11 +21,13 @@ jobs:
       # 保有情報と売買意図がリポジトリに入っていないことを機械的に担保する。
       # このリポジトリは public で、銘柄・株数・口座名が漏れると取り返しがつかない。
       # ウォッチリスト (config/watchlist.py) は保有ではないが購入意図そのものなので同じ扱い。
+      # 運用教訓 (journal/lessons.md) は実際の保有についての観測が積み上がるので同じ扱い
+      # (→ docs/adr/0018-bundle-skills-in-repo.md)。
       # レビューの目視だけに頼らず CI で落とす (CLAUDE.md「public リポジトリ前提の規範」)。
       - name: 保有情報・売買意図のファイルが追跡されていないこと
         run: |
           leaked=""
-          for path in journal/journal.md reports data .env config/watchlist.py; do
+          for path in journal/journal.md journal/lessons.md reports data .env config/watchlist.py; do
             if git ls-files --error-unmatch "$path" > /dev/null 2>&1; then
               leaked="$leaked $path"
             fi
