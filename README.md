@@ -148,15 +148,22 @@ uv run --with ruff ruff check .        # lint
 CI (GitHub Actions) が pull request と main への push で lint・テスト・
 保有情報の追跡チェックを実行する。
 
-## Claude Code スキル
+## エージェントから使う
 
-このリポジトリは [Claude Code](https://claude.com/claude-code) のスキルから
-呼ばれることを前提にしている。スキル定義は `.claude/skills/` に同封してあるので、
-clone すればそのまま使える (このリポジトリを作業ディレクトリにしているときに読み込まれる)
-→ [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)
+このリポジトリはコーディングエージェントのスキルから呼ばれることを前提にしている。
+特定のエージェントには依存しない → [ADR-0019](docs/adr/0019-agent-agnostic-instructions.md)
 
-- `stock-check` — 保有株のテクニカル分析とシナリオ追跡。ジャーナルに継続記録を残す
-- `stock-screen` — ウォッチリストと探索ユニバースからの候補抽出と買い判断
+- **プロジェクト指示**: [`AGENTS.md`](AGENTS.md) が正。`CLAUDE.md` はそれをインポートする
+  だけの薄いファイル (Claude Code が `AGENTS.md` を読まないため)
+- **スキル定義**: [Agent Skills 規格](https://agentskills.io/specification) に沿った
+  `SKILL.md` を `.agents/skills/` に同封してある → [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)。
+  `.claude/skills/` は同じ実体への symlink。clone すればどちらのエージェントからも
+  そのまま使える (このリポジトリを作業ディレクトリにしているときに読み込まれる)
+
+| スキル | 役割 |
+| --- | --- |
+| `stock-check` | 保有株のテクニカル分析とシナリオ追跡。ジャーナルに継続記録を残す |
+| `stock-screen` | ウォッチリストと探索ユニバースからの候補抽出と買い判断 |
 
 スキルなしでも上記のコマンドとして単体で動作する。
 

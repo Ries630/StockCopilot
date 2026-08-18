@@ -5,7 +5,7 @@
 """テストランナー。
 
 このプロジェクトは uv + PEP 723 で依存を管理し、requirements.txt を作らない
-(CLAUDE.md の環境前提)。pytest も同じ流儀で動かせるよう、ランナー自身に
+(AGENTS.md の環境前提)。pytest も同じ流儀で動かせるよう、ランナー自身に
 インライン依存を持たせている。
 
     uv run run_tests.py            # 全テスト

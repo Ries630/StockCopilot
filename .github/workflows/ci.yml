@@ -23,7 +23,7 @@ jobs:
       # ウォッチリスト (config/watchlist.py) は保有ではないが購入意図そのものなので同じ扱い。
       # 運用教訓 (journal/lessons.md) は実際の保有についての観測が積み上がるので同じ扱い
       # (→ docs/adr/0018-bundle-skills-in-repo.md)。
-      # レビューの目視だけに頼らず CI で落とす (CLAUDE.md「public リポジトリ前提の規範」)。
+      # レビューの目視だけに頼らず CI で落とす (AGENTS.md「public リポジトリ前提の規範」)。
       - name: 保有情報・売買意図のファイルが追跡されていないこと
         run: |
           leaked=""
@@ -40,6 +40,17 @@ jobs:
 
       - name: Lint (ruff)
         run: uv run --with ruff ruff check .
+
+      # スキルが Agent Skills 規格 (agentskills.io) の書式を満たすことを検証する。
+      # 規格に乗せるのが .agents/skills へ移した目的なので、準拠は目視でなく機械で担保する
+      # (→ docs/adr/0019-agent-agnostic-instructions.md)。
+      # skills-ref は alpha (「demonstration purposes only」) なので、突発的な更新で CI が
+      # 落ちないようバージョンを固定する。更新は規格の変更を確認したうえで意図的に上げる。
+      - name: スキルが Agent Skills 規格に準拠していること
+        run: |
+          for skill in .agents/skills/*/; do
+            uv run --with 'skills-ref==0.1.1' -- python -m skills_ref.cli validate "$skill"
+          done
 
       # テストはネットワークにアクセスしない。yfinance を叩くと実行日と
       # 市場の状態で結果が変わり、CI が不安定になるため。

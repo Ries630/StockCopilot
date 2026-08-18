@@ -173,4 +173,4 @@ uv run analyze.py <候補のティッカーを並べる>
 - **候補ゼロを失敗と扱わない。** 母集団が狭いので出ない日のほうが多い。無理に候補を作るとスクリーナーの意味が消える
 - **保有銘柄の分析はこのスキルの仕事ではない。** `stock-check` の担当。スクリーニングの途中で保有の話に流れない
 - **ファンダの深掘りは別プロジェクト (dexter-jp / 日本株) に回す。** このスキルはテクニカル担当。dexter-jp の LLM 入りツールを機械スクリーニングの代わりに使わない → `docs/adr/0007-split-technical-and-fundamental-research.md`
-- `.claude/skills/stock-check/SKILL.md` と規範を揃えている。片方だけ変えないこと
+- `.agents/skills/stock-check/SKILL.md` と規範を揃えている。片方だけ変えないこと
