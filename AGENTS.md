@@ -3,11 +3,10 @@
 株式 (日本株・米国株、現物) のスクリーニングと保有分析。**発注機能は持たない** (分析・提案のみ)。
 TradingCopilot (仮想通貨) の兄弟プロジェクト ([ADR-0001](docs/adr/0001-separate-sibling-project.md))。
 
-このファイルが指示の正で、特定のエージェントに依存しない。Claude Code だけは `AGENTS.md` を
-読まないので、`CLAUDE.md` からインポートしている → [ADR-0019](docs/adr/0019-agent-agnostic-instructions.md)
-
 **設計判断の理由・却下した代替・その時点の測定値は [`docs/adr/`](docs/adr/README.md) にある。**
-このファイルには結論とリンクだけを置く。判断を変えるときは新しい ADR を書いてから実装する。
+このファイルには結論とリンクだけを置く。判断を変えるときは新しい ADR を書いてから実装する
+(`adr` skill)。遡り作成の一次資料になった設計メモは
+`~/.claude/plans/tradingcopilot-trading-copilot-morning-b-toasty-duckling.md`。
 
 ## 環境前提
 
