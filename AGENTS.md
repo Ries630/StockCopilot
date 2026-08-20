@@ -19,9 +19,14 @@ TradingCopilot (仮想通貨) の兄弟プロジェクト ([ADR-0001](docs/adr/0
 cd ~/Repositories/StockCopilot
 uv run screen.py            # スクリーナー
 uv run analyze.py 7203 AAPL # 保有分析 (引数省略で保有全銘柄)
+uv run report.py reports/YYYY-MM-DD_evening.json           # HTML レポート
+uv run notify.py reports/YYYY-MM-DD_evening.json --dry-run # Slack 通知 (確認)
 uv run run_tests.py         # テスト (ネットワークアクセスなし)
 uv run --with ruff ruff check .  # lint
 ```
+
+Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも落ちず、
+スキップ理由が出る。
 
 ## データ源
 
@@ -63,6 +68,15 @@ uv run --with ruff ruff check .  # lint
 - `docs/report-contract.schema.json` — **中間表現JSONの構造の正**。型・必須・語彙は
   JSON Schemaで検証し、業務上の組み合わせは`lib/contract.py`で検証する
   → [ADR-0021](docs/adr/0021-json-schema-for-report-contract.md)
+- `docs/report-contract.md` — **中間表現の意味・組み合わせ規則の正**。
+  判断と機械データの境界をここで定義する → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
+- `lib/verdicts.py` — 判断ラベルの定義と「資金が動く判断」の判定。
+  `ACTIONABLE_VERDICTS` が **Slack のメンションを鳴らす条件の正** (買い / 積増し / 売却)
+- `report.py` — 中間表現 → 自己完結 HTML (`reports/*.html`)。判断も指標計算もしない。
+  外部リソースを読み込まない
+- `notify.py` — 中間表現 → Slack (Incoming Webhook)。**LLM は Slack ツールを呼ばない**。
+  毎日投稿し、メンションは資金が動く判断がある日だけ
+  → [ADR-0022](docs/adr/0022-slack-webhook-notification.md)
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
   実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは
@@ -85,7 +99,8 @@ uv run --with ruff ruff check .  # lint
 ## 安全規範
 
 - 発注コード・証券会社の取引 API を追加しない (このプロジェクトのスコープ外)
-- `.env` を作る場合 (J-Quants 移行時) は `.gitignore` 登録を確認し、コミットしない
+- `.env` (Slack の資格情報 / J-Quants 移行時) は `.gitignore` 済み。コミットしない。
+  雛形 `.env.example` にも実際の値を書かない
 - スクリーナーに裁量的な「買い判定」ロジックを足さない。候補の採否は分析 (analyze) を通す
 
 ### public リポジトリ前提の規範
@@ -110,6 +125,8 @@ uv run --with ruff ruff check .  # lint
 `.claude/skills/` は同じ実体への symlink で、Claude Code 用の橋渡し
 → [ADR-0019](docs/adr/0019-agent-agnostic-instructions.md)
 
+- `stock-brief` — 平日夕方の定期ブリーフ。stock-check → stock-screen → 中間表現 JSON →
+  HTML → Slack → ジャーナルを通しで回す束ね役。実体は `.agents/skills/stock-brief/SKILL.md`
 - `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
   実体は `.agents/skills/stock-check/SKILL.md`
 - `stock-screen` — ウォッチリスト + 探索ユニバースから候補を機械抽出し (screen.py)、

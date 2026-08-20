@@ -33,6 +33,10 @@ flowchart LR
     AN -- stock-check --> VC["ホールド / 積増し /<br/>部分利確 / 売却 / 保留"]
     VS --> J["journal/journal.md<br/>追跡対象外"]
     VC --> J
+    VS -- stock-brief --> IR["中間表現 JSON<br/>reports/*_evening.json"]
+    VC -- stock-brief --> IR
+    IR --> RP["report.py<br/>HTML レポート"]
+    IR --> NT["notify.py<br/>Slack (Webhook)"]
 ```
 
 - **買う / 買わないの判断は `screen.py` には無い。** スクリーナーは候補を絞るだけで、
@@ -44,6 +48,10 @@ flowchart LR
 - **判断ラベルは 2 系統で別物。** 候補側と保有側で語彙を共有しない
 - **保有は Investment の生成物そのものではない。** `held_tickers()` がジャーナルの執行記録を
   合成した実効保有を返す ([ADR-0015](docs/adr/0015-journal-executions-machine-read.md))
+- **夕方ブリーフは中間表現 JSON を挟む。** HTML レポートと Slack 通知はどちらもそれだけを
+  入力にし、**通知でメンションを鳴らす条件を LLM の裁量から外している**
+  ([ADR-0020](docs/adr/0020-intermediate-report-json.md) /
+  [ADR-0021](docs/adr/0021-slack-webhook-notification.md))
 
 `config/watchlist.py` と `journal/journal.md` は追跡対象外
 ([ADR-0008](docs/adr/0008-no-holdings-in-repo.md))。
@@ -64,6 +72,8 @@ flowchart LR
 | 決算日はトリガーの有効性を判断するために取得する | [0009](docs/adr/0009-earnings-date-as-trigger-validity.md) |
 | 母集団を 3 層にし、ウォッチリストは追跡対象外にする | [0010](docs/adr/0010-three-layer-universe.md) |
 | 通過条件は状態ではなく事象にし、突破幅に下限を置く | [0011](docs/adr/0011-event-based-screen-thresholds.md) |
+| 夕方ブリーフの出力に中間表現 JSON を挟む | [0020](docs/adr/0020-intermediate-report-json.md) |
+| Slack 通知をスクリプトの Incoming Webhook に移す | [0021](docs/adr/0021-slack-webhook-notification.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 
@@ -106,7 +116,15 @@ uv run analyze.py                 # 引数省略で保有全銘柄
 
 # データ源の疎通確認
 uv run lib/datasource.py --ticker 7203
+
+# 夕方ブリーフの出力 (中間表現 JSON は stock-brief スキルが書く)
+uv run report.py reports/2026-08-20_evening.json            # HTML レポート
+uv run notify.py reports/2026-08-20_evening.json --dry-run  # Slack 本文の確認
+uv run notify.py reports/2026-08-20_evening.json            # Slack へ投稿
 ```
+
+Slack 通知には `.env` が要る (`cp .env.example .env` して埋める)。未設定でも落ちず、
+スキップ理由が出る。
 
 `analyze.py` を引数なしで実行する保有モードは、Investment プロジェクトの生成物を
 参照する。存在しない環境ではティッカーを引数で渡す。
@@ -121,8 +139,13 @@ uv run lib/datasource.py --ticker 7203
 | `lib/holdings.py` | 保有の読み込み (read-only) |
 | `config/universe.py` | 探索ユニバースとパラメータ |
 | `config/watchlist.example.py` | ウォッチリストの雛形 (本体 `watchlist.py` は追跡対象外) |
+| `lib/verdicts.py` | 判断ラベルの定義と「資金が動く判断」の判定 (メンションの発火条件の正) |
 | `screen.py` | 候補の機械スクリーニング |
 | `analyze.py` | 保有・指定銘柄のテクニカル分析 |
+| `report.py` | 中間表現 JSON → 自己完結 HTML。外部リソースを読み込まない |
+| `notify.py` | 中間表現 JSON → Slack (Incoming Webhook) |
+| `docs/report-contract.md` | 中間表現の書式仕様 |
+| `.env.example` | Slack 資格情報の雛形 (本体 `.env` は追跡対象外) |
 | `journal/README.md` | 分析ジャーナルの書式仕様 (本体は追跡対象外) |
 | `tests/` | テスト (ネットワークアクセスなし) |
 | `docs/adr/` | 設計判断の記録 (ADR) |
@@ -162,12 +185,14 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 
 | スキル | 役割 |
 | --- | --- |
+| `stock-brief` | 平日夕方の定期ブリーフ。下 2 つを通しで回し、HTML と Slack 通知まで出す |
 | `stock-check` | 保有株のテクニカル分析とシナリオ追跡。ジャーナルに継続記録を残す |
 | `stock-screen` | ウォッチリストと探索ユニバースからの候補抽出と買い判断 |
 
 スキルなしでも上記のコマンドとして単体で動作する。
 
 出力をどう読むかの正は [`docs/output-contract.md`](docs/output-contract.md)、
+中間表現の書式の正は [`docs/report-contract.md`](docs/report-contract.md)、
 ジャーナルの書式と判断ラベルの正は [`journal/README.md`](journal/README.md) にあり、
 スキルはそこへリンクするだけにしている。運用して分かった教訓は追跡対象外の
 `journal/lessons.md` に置く (実際の保有についての観測を含むため)。
