@@ -37,6 +37,33 @@ def is_actionable(verdict: str | None) -> bool:
     return verdict in ACTIONABLE_VERDICTS
 
 
+def check_verdict(verdict: str, allowed: tuple, where: str) -> str:
+    """判断ラベルが契約の語彙に含まれることを確かめる。
+
+    値の検証を欠かすと、契約外のラベル ("買い " や "購入" のような揺れ) が
+    **カードには表示されるのに `actionable_items()` には拾われない**状態になる。
+    買い判断がヒーローからも Slack のメンションからも静かに消えるため、
+    キーの存在だけでなく値まで見る。
+
+    Args:
+        verdict: 判断ラベル。
+        allowed: 許される語彙 (HOLDING_VERDICTS / CANDIDATE_VERDICTS)。
+        where: エラー文に出す位置の説明。
+
+    Returns:
+        検証済みの判断ラベル。
+
+    Raises:
+        ValueError: 語彙に無い値の場合。
+    """
+    if verdict not in allowed:
+        raise ValueError(
+            f"{where}: 判断ラベル {verdict!r} は契約外 "
+            f"(使えるのは {' / '.join(allowed)} / docs/report-contract.md)"
+        )
+    return verdict
+
+
 def actionable_items(data: dict) -> list[dict]:
     """中間表現から、資金が動く判断だけを取り出す。
 

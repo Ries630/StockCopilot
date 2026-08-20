@@ -38,7 +38,7 @@ LLM の判断・シナリオ・散文 ──────┘         │
 | `market_tone` | obj | | 地合い。`{"label": "リスクオン", "prose": "…"}` |
 | `holdings` | list | ✓ | 保有銘柄。下記 `Position`（空配列可） |
 | `candidates` | list | ✓ | スクリーニング候補。下記 `Candidate`（空配列可） |
-| `screen` | obj | ✓ | `{"universe": 25, "market": "all", "failures": 0}` |
+| `screen` | obj | ✓ | `{"universe": 25, "market": "all", "failures": 0}`。3 キーとも必須 |
 | `summary` | str | ✓ | 総括の散文。全銘柄に共通するリスクと優先アクション 1 つ |
 | `assumptions` | list[str] | | スケジュール実行で確認を取らずに置いた前提 |
 | `warnings` | list[str] | | 警告（保有データの鮮度、取得失敗、ジャーナルの解釈不能行など） |
@@ -162,3 +162,15 @@ LLM の判断・シナリオ・散文 ──────┘         │
 `report.py` / `notify.py` は、必須キーが欠けていたら**その場で落ちる**。
 既定値で埋めて進むと、LLM が書き漏らした項目が静かに空欄になり、
 「判断が無かった日」と「書き漏らした日」が出力から区別できなくなる。
+
+**キーの存在だけでなく値も見る。**
+
+- **`verdict` は語彙に含まれる値でなければならない**（`lib/verdicts.py` の
+  `HOLDING_VERDICTS` / `CANDIDATE_VERDICTS`）。`"買い "` のような揺れを通すと、
+  カードには表示されるのに `actionable_items()` が拾わず、買い判断がヒーローからも
+  Slack のメンションからも静かに消える
+- **`effective_holdings.lines` は空にできない。** 執行 0 件でも
+  「執行記録なし（as_of 時点のまま）」を入れる
+- **`screen.failures` は候補ゼロと混ぜない。** 取得に失敗した銘柄は
+  「条件を満たさなかった」のではなく「判定できていない」。HTML では見出しと
+  候補ゼロの文言の両方に件数を出す

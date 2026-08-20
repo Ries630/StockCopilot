@@ -23,7 +23,13 @@ import html
 import json
 import pathlib
 
-from lib.verdicts import NOT_APPLICABLE, actionable_items
+from lib.verdicts import (
+    CANDIDATE_VERDICTS,
+    HOLDING_VERDICTS,
+    NOT_APPLICABLE,
+    actionable_items,
+    check_verdict,
+)
 
 # 4 軸シグナルの評価 → 配色と表示ラベル。
 # 中間表現には色ではなく評価 (good/warn/bad/unknown) が入る。軸ごとに「良い」の
@@ -416,7 +422,10 @@ def position_card(pos: dict) -> str:
     # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
     # 既定値に潰すと、書き漏らした「売却」が「判断なし」として表示され、
     # ヒーローからも actionable_items() からも消える
-    verdict = NOT_APPLICABLE if pos.get("reference_only") else require(pos, "verdict", where)
+    if pos.get("reference_only"):
+        verdict = NOT_APPLICABLE
+    else:
+        verdict = check_verdict(require(pos, "verdict", where), HOLDING_VERDICTS, where)
 
     card_cls = "card ref" if pos.get("reference_only") else "card"
     scenario = ""
@@ -440,7 +449,7 @@ def position_card(pos: dict) -> str:
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(pos.get("change_pct"))}</span></div>'
         f'<div style="margin-top:6px">{scenario}</div>'
-        f"{signal_bars(pos.get('signals') or {})}"
+        f"{signal_bars(require(pos, 'signals', where))}"
         f"{sparkline(pos.get('closes') or [])}"
         f"{level_axis(price, pos.get('levels') or {}, currency)}"
         f"{earnings_chip(pos.get('earnings'))}"
@@ -464,7 +473,7 @@ def candidate_card(cand: dict) -> str:
     currency = require(cand, "currency", where)
     price = require(cand, "price", where)
     prose = require(cand, "prose", where)
-    verdict = require(cand, "verdict", where)
+    verdict = check_verdict(require(cand, "verdict", where), CANDIDATE_VERDICTS, where)
 
     strong = ""
     if prose.get("strong"):
@@ -493,7 +502,7 @@ def candidate_card(cand: dict) -> str:
         f'<span class="sub num"> {signed_pct(cand.get("change_pct"))}</span></div>'
         f'<div class="sub num" style="margin-top:2px">{esc(meta)}</div>'
         f"{score_bar(float(require(cand, 'score_atr', where)))}"
-        f"{signal_bars(cand.get('signals') or {})}"
+        f"{signal_bars(require(cand, 'signals', where))}"
         f"{sparkline(cand.get('closes') or [])}"
         f"{range_axis(require(cand, 'range', where), price, currency)}"
         f"{level_axis(price, cand.get('levels') or {}, currency)}"
@@ -591,12 +600,22 @@ def render(data: dict) -> str:
     # 「保有なし・候補なし」という正常な出力に化けて区別できなくなる
     holdings = require(data, "holdings", "root")
     candidates = require(data, "candidates", "root")
-    cand_html = (
-        f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
-        if candidates
-        else '<div class="empty">候補なし。条件を満たす事象が起きた銘柄が無かった。'
-        "閾値も母集団もこの場では変えない。</div>"
-    )
+    failures = require(screen, "failures", "screen")
+    if candidates:
+        cand_html = f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
+    else:
+        # 取得に失敗した銘柄は「条件を満たさなかった」のではなく「判定できていない」。
+        # 混ぜると、取得障害の日を静かな日として読んでしまう
+        note = ""
+        if failures:
+            note = (
+                f"ただし {esc(failures)} 銘柄は取得に失敗しており、判定できていない。"
+                "候補ゼロと取得失敗は別の事象として扱うこと。"
+            )
+        cand_html = (
+            '<div class="empty">候補なし。条件を満たす事象が起きた銘柄が無かった。'
+            f"閾値も母集団もこの場では変えない。{note}</div>"
+        )
     hold_html = (
         f'<div class="grid">{"".join(position_card(p) for p in holdings)}</div>'
         if holdings
@@ -605,11 +624,19 @@ def render(data: dict) -> str:
 
     # 生成時刻は ISO8601 の "HH:MM" だけを見出しに出す (日付は左に既に出ている)
     gen_time = str(require(data, "generated_at", "root"))[11:16]
-    eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in (eff.get("lines") or []))
+    lines = require(eff, "lines", "effective_holdings")
+    if not lines:
+        raise ValueError(
+            "effective_holdings.lines が空。執行 0 件でも「執行記録なし (as_of 時点のまま)」を"
+            "入れる (docs/report-contract.md)"
+        )
+    eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
     cand_head = (
         f"候補 {len(candidates)} 件 — 母集団 {esc(screen.get('universe'))} 銘柄 "
         f"(market={esc(screen.get('market'))})"
     )
+    if failures:
+        cand_head += f" / 取得失敗 {esc(failures)} 件"
     eff_head = f"実効保有 — Investment {esc(as_of)} + 執行記録 {esc(eff.get('executions', 0))} 件"
     ref_count = sum(1 for p in holdings if p.get("reference_only"))
     hold_head = f"保有 {len(holdings)} 銘柄"

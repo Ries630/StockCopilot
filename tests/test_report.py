@@ -211,6 +211,67 @@ def test_reference_only_position_may_omit_verdict() -> None:
     assert report.NOT_APPLICABLE in html
 
 
+def test_unknown_verdict_raises() -> None:
+    """契約外のラベルを通さない。
+
+    通すとカードには表示されるのに actionable_items() が拾わず、
+    買い判断がヒーローと Slack のメンションから静かに消える。
+    """
+    with pytest.raises(ValueError, match="契約外"):
+        report.render(base_data(candidates=[candidate(verdict="購入")]))
+    with pytest.raises(ValueError, match="契約外"):
+        report.render(base_data(candidates=[candidate(verdict="買い ")]))
+    # 保有側は別の語彙。候補のラベルを入れたら落ちる
+    with pytest.raises(ValueError, match="契約外"):
+        report.render(base_data(holdings=[position(verdict="買い")]))
+
+
+def test_missing_signals_raises() -> None:
+    """signals の欠落を unknown に潰さない。
+
+    契約上の unknown は「データ不足」を意味するので、書き漏らしが
+    実際の分析結果として描かれてしまう。
+    """
+    bad = position()
+    del bad["signals"]
+    with pytest.raises(KeyError, match="signals"):
+        report.render(base_data(holdings=[bad]))
+
+    bad_cand = candidate()
+    del bad_cand["signals"]
+    with pytest.raises(KeyError, match="signals"):
+        report.render(base_data(candidates=[bad_cand]))
+
+
+def test_empty_effective_holdings_lines_raises() -> None:
+    """執行 0 件でも「執行記録なし」の行が要る。
+
+    空にすると、記録が無いのか拾い忘れたのかが読み手に区別できない。
+    """
+    with pytest.raises(ValueError, match="effective_holdings"):
+        report.render(base_data(effective_holdings={"executions": 0, "lines": []}))
+    with pytest.raises(KeyError, match="lines"):
+        report.render(base_data(effective_holdings={"executions": 0}))
+
+
+def test_fetch_failures_are_not_reported_as_zero_candidates() -> None:
+    """取得失敗と候補ゼロを混ぜない。
+
+    混ぜると、取得障害の日を「静かな日」として読んでしまう。
+    """
+    quiet = report.render(base_data())
+    assert "取得失敗" not in quiet
+
+    broken = report.render(base_data(screen={"universe": 25, "market": "all", "failures": 3}))
+    assert "取得失敗 3 件" in broken
+    assert "3 銘柄は取得に失敗しており、判定できていない" in broken
+
+
+def test_missing_failures_count_raises() -> None:
+    with pytest.raises(KeyError, match="failures"):
+        report.render(base_data(screen={"universe": 25, "market": "all"}))
+
+
 def test_no_external_resources() -> None:
     html = report.render(base_data(holdings=[position()], candidates=[candidate()]))
     for token in ("http://", "https://", "<script", "localStorage", "@import"):
