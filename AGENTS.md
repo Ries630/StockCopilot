@@ -54,7 +54,10 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   書式の正は `journal/README.md`
 - `config/universe.py` — 探索ユニバースとパラメータ。母集団は
   ウォッチリスト / 探索ユニバース / 保有 (除外) の 3 層
-  → [ADR-0010](docs/adr/0010-three-layer-universe.md)
+  → [ADR-0010](docs/adr/0010-three-layer-universe.md)。
+  **日本株の日本語名 `NAMES_JP` もここが正** → [ADR-0023](docs/adr/0023-japanese-stock-display-names.md)
+- `lib/names.py` — 銘柄名の解決 (辞書 → yfinance の英語名 → None)。
+  **日本株は 4 桁コードだけでは判別できないので出力に必ず名前を併記する**
 - `config/watchlist.py` — ウォッチリスト (保有検討中)。**追跡対象外**。
   雛形は `config/watchlist.example.py`。未作成なら空リスト扱い
 - `screen.py` — 候補の機械スクリーニング。候補を絞るだけで、買い判断は analyze.py の
@@ -73,7 +76,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `lib/verdicts.py` — 判断ラベルの定義と「資金が動く判断」の判定。
   `ACTIONABLE_VERDICTS` が **Slack のメンションを鳴らす条件の正** (買い / 積増し / 売却)
 - `report.py` — 中間表現 → 自己完結 HTML (`reports/*.html`)。判断も指標計算もしない。
-  外部リソースを読み込まない
+  外部リソースを読み込まない。**用語の説明は本文に書かず `GLOSSARY` のポップオーバーに置く**
+  → [ADR-0024](docs/adr/0024-glossary-popovers.md)
 - `notify.py` — 中間表現 → Slack (Incoming Webhook)。**LLM は Slack ツールを呼ばない**。
   毎日投稿し、メンションは資金が動く判断がある日だけ
   → [ADR-0022](docs/adr/0022-slack-webhook-notification.md)

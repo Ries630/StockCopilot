@@ -83,6 +83,12 @@ STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
 
 - **`prose` を必ず埋める。** HTML 単独でレポートとして成立させるための本文で、
   図だけ並べても読み手は判断を再構成できない。`prose` を欠くと `report.py` が落ちる
+- **日本株には `name` を必ず入れる。** 4 桁コードだけでは何の会社か分からない。
+  保有は Investment の生成物、候補は `screen.py` が付けて返すので、その値を写す。
+  欠けていると `report.py` が落ちる → [ADR-0023](../../../docs/adr/0023-japanese-stock-display-names.md)
+- **用語の説明を `prose` に書かない。** 説明は `report.py` の `GLOSSARY` にあり、
+  HTML ではポップオーバーとして出る。`prose` に書くのはその日の観測と判断だけ
+  → [ADR-0024](../../../docs/adr/0024-glossary-popovers.md)
 - **判断ラベルは 2 系統を取り違えない。** 保有は ホールド / 積増し / 部分利確 / 売却 / 保留、
   候補は 買い / 見送り / 決算後に再判定 / 保留。定義の正は
   [`journal/README.md`](../../../journal/README.md)

@@ -5,6 +5,8 @@
 出力は決定的になる。
 """
 
+import re
+
 import pytest
 
 import report
@@ -389,3 +391,106 @@ def test_range_marker_clamped_but_percent_is_not() -> None:
 def test_level_axis_skipped_without_material() -> None:
     assert report.level_axis(100.0, {}, "USD") == ""
     assert report.level_axis(None, {"support": 90}, "USD") == ""
+
+
+# ─── 銘柄名 ──────────────────────────────────────────────
+
+
+def test_jp_stock_without_name_raises() -> None:
+    """4 桁コードだけでは何の会社か分からないので、日本株は名前を必須にする。"""
+    with pytest.raises(KeyError, match="name"):
+        pos = position()
+        del pos["name"]
+        report.render(base_data(holdings=[pos]))
+    with pytest.raises(KeyError, match="name"):
+        cand = candidate(market="jp", currency="JPY")
+        del cand["name"]
+        report.render(base_data(candidates=[cand]))
+
+
+def test_jp_stock_with_blank_name_raises() -> None:
+    """キーだけあっても、空の名前は表示名として使えない。"""
+    with pytest.raises(ValueError, match="name"):
+        report.render(base_data(holdings=[position(name="")]))
+    with pytest.raises(ValueError, match="name"):
+        report.render(base_data(candidates=[candidate(market="jp", currency="JPY", name="")]))
+
+
+def test_us_stock_without_name_is_allowed() -> None:
+    """米国株はティッカーで判別できる。"""
+    cand = candidate()
+    del cand["name"]
+    html = report.render(base_data(candidates=[cand]))
+    assert "AAAA" in html
+
+
+def test_jp_name_is_rendered_next_to_the_code() -> None:
+    html = report.render(base_data(holdings=[position(name="トヨタ自動車")]))
+    assert "9999 トヨタ自動車" in html
+
+
+# ─── 用語の説明 ───────────────────────────────────────────
+
+
+def visible_text(html: str) -> str:
+    """ポップオーバーと title 属性を取り除いた、本文として見える部分を返す。
+
+    Args:
+        html: render() の出力。
+
+    Returns:
+        本文だけを残した文字列。
+    """
+    without_pops = re.sub(r"<div popover.*?</div>", "", html, flags=re.DOTALL)
+    return re.sub(r'title="[^"]*"', "", without_pops)
+
+
+def test_explanations_never_appear_in_the_body() -> None:
+    """説明はポップオーバーにだけ置く。
+
+    毎日同じ説明文がレポート本文に並ぶのを避けるための規範なので、
+    本文側に説明が漏れていないことをテストで固定する。
+    """
+    html = report.render(base_data(holdings=[position()], candidates=[candidate()]))
+    body = visible_text(html)
+    for _, description in report.GLOSSARY.values():
+        assert description not in body
+
+
+def test_terms_link_to_their_popover() -> None:
+    html = report.render(base_data(holdings=[position()], candidates=[candidate()]))
+    assert 'popovertarget="g-weekly"' in html
+    assert "<div popover id=\"g-weekly\">" in html
+
+
+def test_verdict_badges_carry_their_explanation() -> None:
+    html = report.render(base_data(candidates=[candidate(verdict="決算後に再判定")]))
+    assert 'popovertarget="g-v_after_earnings"' in html
+
+
+def test_glossary_bodies_are_emitted_once_each() -> None:
+    """同じ用語が何度出てもポップオーバーの実体は 1 つ。"""
+    html = report.render(
+        base_data(holdings=[position(), position(ticker="8888")], candidates=[candidate()])
+    )
+    assert html.count('<div popover id="g-score">') == 1
+    assert html.count('<div popover id="g-weekly">') == 1
+
+
+def test_glossary_needs_no_javascript() -> None:
+    """Popover API だけで開く。未対応ブラウザ向けに title 属性を併記する。"""
+    html = report.render(base_data(holdings=[position()]))
+    assert "<script" not in html
+    assert "onclick" not in html
+    assert 'title="' in html
+
+
+def test_glossary_is_hidden_without_popover_support() -> None:
+    """未知のpopover属性を通常要素として描画するブラウザでも説明本文を露出させない。"""
+    html = report.render(base_data(holdings=[position()]))
+    assert "[popover] { display: none;" in html
+    assert "[popover]:popover-open { display: block; }" in html
+
+
+def test_unknown_term_falls_back_to_plain_text() -> None:
+    assert report.term("存在しないキー", "そのまま") == "そのまま"

@@ -28,6 +28,12 @@ except ImportError:
     WATCHLIST_JP: list[str] = []
     WATCHLIST_US: list[str] = []
 
+# ウォッチリストの日本語名 (任意)。雛形にある WATCHLIST_NAMES_JP を作っていれば使う
+try:
+    from config.watchlist import WATCHLIST_NAMES_JP
+except ImportError:
+    WATCHLIST_NAMES_JP: dict[str, str] = {}
+
 # --- 日本株: 流動性の高い主要銘柄 (編集して拡張) ---
 # public リポジトリなので、ここに実際の保有銘柄を書き足さないこと。
 # 保有は screen.py が既定で除外するので、そもそも書く意味がない
@@ -43,6 +49,29 @@ UNIVERSE_JP = [
     "6861",  # キーエンス
     "9983",  # ファーストリテイリング
 ]
+
+# --- 日本株の銘柄名 ---
+# **4 桁コードだけでは何の会社か分からない**ため、出力には必ず名前を併記する。
+# yfinance も名前を返すが英語なので (7203 → "Toyota Motor Corporation")、
+# 日本語で出したい銘柄はここに書く。ここに無い銘柄は yfinance の英語名に落ちる
+# (→ docs/adr/0022-japanese-stock-display-names.md)。
+#
+# 保有銘柄はここに書かない。保有の名前は Investment の生成物から来る
+# (public リポジトリに保有を残さないため → docs/adr/0008)。
+NAMES_JP: dict[str, str] = {
+    "7203": "トヨタ自動車",
+    "6758": "ソニーグループ",
+    "8306": "三菱UFJフィナンシャル・グループ",
+    "9984": "ソフトバンクグループ",
+    "6501": "日立製作所",
+    "8035": "東京エレクトロン",
+    "6098": "リクルートホールディングス",
+    "7974": "任天堂",
+    "6861": "キーエンス",
+    "9983": "ファーストリテイリング",
+    # ウォッチリスト側の名前を重ねる (追跡対象外のファイルに書ける)
+    **WATCHLIST_NAMES_JP,
+}
 
 # --- 米国株: 主要大型株 (編集して拡張) ---
 UNIVERSE_US = [

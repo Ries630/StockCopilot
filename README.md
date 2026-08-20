@@ -75,6 +75,8 @@ flowchart LR
 | 夕方ブリーフの出力に中間表現 JSON を挟む | [0020](docs/adr/0020-intermediate-report-json.md) |
 | 中間表現の構造をJSON Schema、組み合わせ規則をPythonで検証する | [0021](docs/adr/0021-json-schema-for-report-contract.md) |
 | Slack 通知をスクリプトの Incoming Webhook に移す | [0022](docs/adr/0022-slack-webhook-notification.md) |
+| 日本株の名前は手書きの辞書を正にし、yfinance を落ち先にする | [0023](docs/adr/0023-japanese-stock-display-names.md) |
+| 用語の説明は本文ではなくポップオーバーに置く | [0024](docs/adr/0024-glossary-popovers.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 
@@ -141,6 +143,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env` して埋める)。�
 | `config/universe.py` | 探索ユニバースとパラメータ |
 | `config/watchlist.example.py` | ウォッチリストの雛形 (本体 `watchlist.py` は追跡対象外) |
 | `lib/verdicts.py` | 判断ラベルの定義と「資金が動く判断」の判定 (メンションの発火条件の正) |
+| `lib/names.py` | 銘柄名の解決 (日本株は 4 桁コードだけでは判別できないため必ず併記する) |
 | `screen.py` | 候補の機械スクリーニング |
 | `analyze.py` | 保有・指定銘柄のテクニカル分析 |
 | `report.py` | 中間表現 JSON → 自己完結 HTML。外部リソースを読み込まない |

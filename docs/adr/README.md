@@ -91,6 +91,8 @@ ADR の役目。
 | [0020](0020-intermediate-report-json.md) | 夕方ブリーフの出力に中間表現 JSON を挟む | 承認済み |
 | [0021](0021-json-schema-for-report-contract.md) | 中間表現の構造をJSON Schema、業務上の組み合わせをPythonで検証する | 承認済み |
 | [0022](0022-slack-webhook-notification.md) | Slack 通知をスクリプトの Incoming Webhook に移す | 承認済み |
+| [0023](0023-japanese-stock-display-names.md) | 日本株の表示名は手書きの辞書を正にし、yfinanceを落ち先にする | 承認済み |
+| [0024](0024-glossary-popovers.md) | 用語の説明は本文ではなくポップオーバーに置く | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）
 

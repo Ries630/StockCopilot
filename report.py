@@ -58,6 +58,128 @@ VERDICT_COLOR = {
     NOT_APPLICABLE: "var(--muted)",
 }
 
+
+# 用語の説明。**本文に毎日同じ説明を書かない**ための逃がし先で、小さなラベルを
+# 押したときだけ出す (→ docs/adr/0024-glossary-popovers.md)。
+#
+# 説明は専門用語を使わずに書く。ここで RSI を「RSI が高い状態」と説明しても、
+# 読み手が知りたいこと (だから何なのか) は埋まらない。
+GLOSSARY: dict[str, tuple[str, str]] = {
+    "weekly": (
+        "週足",
+        "1 本のローソクが 1 週間ぶんの値動き。長い目で見た方向 (上位トレンド) を"
+        "見るために使う。日足より反応は遅いが、一時的な上下に振り回されにくい。",
+    ),
+    "daily": (
+        "日足",
+        "1 本が 1 日ぶんの値動き。いつ買う・売るかのタイミング判断に使う。"
+        "週足で方向を決め、日足でタイミングを測る、の 2 段構え。",
+    ),
+    "overheat": (
+        "過熱",
+        "短期間に上がりすぎ・下がりすぎていないか。過熱していると、方向が合っていても"
+        "いったん反対に振れやすいので、押し目を待つ判断につながる。",
+    ),
+    "volume": (
+        "出来高",
+        "その値動きにどれだけの売買が伴ったか。売買を伴わない値上がりは続きにくい。"
+        "OBV は出来高の増減を積み上げた線で、上げに買いが伴っているかを見る。",
+    ),
+    "score": (
+        "score (ATR 単位)",
+        "候補の強さ。その銘柄自身の 1 日の平均的な値幅 (ATR) の何倍動いた／突破したかで測る。"
+        "動きやすい銘柄と静かな銘柄を同じ土俵で並べるための単位。"
+        "向きは持たないので、大きく下げた銘柄も高い score になる。",
+    ),
+    "atr": (
+        "ATR",
+        "1 日でだいたいどれくらい動くか、の平均値。値動きの荒さを表す。"
+        "同じ 3% の変化でも、荒い銘柄では普通、静かな銘柄では異常な動きになる。",
+    ),
+    "range20": (
+        "20 日レンジ",
+        "直近 20 営業日の高値と安値の幅。終値位置が 100% を超えていればその上限を"
+        "上に抜けたこと、0% 未満なら下に抜けたことを意味する。",
+    ),
+    "closed_bar": (
+        "確定足",
+        "取引が終わって値が確定したローソク。まだ動いている途中の足で判断すると、"
+        "同じ分析をあとからやり直したときに結果が変わってしまうため使わない。",
+    ),
+    "effective_holdings": (
+        "実効保有",
+        "保有データの基準日 (as_of) 時点の株数に、そのあとジャーナルへ記録した売買を"
+        "足し合わせた、いまの実際の株数。基準日の更新が低頻度なので、この形で追う。",
+    ),
+    "support": (
+        "支持",
+        "下げが止まりやすい価格帯。ここを終値で割ると、見立てが下向きに切り替わる。",
+    ),
+    "resistance": (
+        "抵抗",
+        "上げが止まりやすい価格帯。ここを終値で超えられると、上向きが続きやすい。",
+    ),
+    "invalidation": (
+        "無効化",
+        "そこを割ったら今の見立てが成り立たなくなる価格。持ち続ける根拠が消える線で、"
+        "手仕舞いや判断のやり直しの目安になる。",
+    ),
+    "earnings": (
+        "決算注記",
+        "決算の前後は寄り付きで価格が飛ぶ (ギャップ) ことがあり、"
+        "「終値で◯◯円を割ったら」という条件が飛び越えられて実行できなくなる。"
+        "⚠ はその期間に入っている印で、日程のお知らせではない。",
+    ),
+    "scenario": (
+        "シナリオ進捗",
+        "前回立てた見立てが今どうなっているか。前進 (近づいた) / 停滞 (動いていない) / "
+        "否定接近 (崩れかけ) の 3 つで示す。",
+    ),
+    "sparkline": (
+        "推移の線",
+        "直近の終値の並びを小さく描いたもの。目盛りは無く、形と向きだけを見る。"
+        "上昇なら緑、下落なら赤。",
+    ),
+    "market_tone": (
+        "地合い",
+        "相場全体の空気。株・債券・金などの ETF の強弱の並びから、資金がリスクを"
+        "取りに行っているか、退避しているかを読む。個別銘柄の強弱を相対で見るために使う。",
+    ),
+    "v_buy": ("買い", "いまの判断材料からは買い。執行するかはりーすさんが決める。"),
+    "v_add": ("積増し", "すでに持っている銘柄を買い増す判断。"),
+    "v_hold": ("ホールド", "そのまま持ち続ける。動かないことも判断のひとつ。"),
+    "v_trim": ("部分利確", "一部だけ売って利益を確定し、残りは持ち続ける。"),
+    "v_sell": ("売却", "持ち高を手仕舞う判断。"),
+    "v_pass": ("見送り", "今回は買わない。理由を必ず 1 行添えてある。"),
+    "v_after_earnings": (
+        "決算後に再判定",
+        "決算のギャップで価格の水準が飛びうるので、決算を通過してから判断し直す。",
+    ),
+    "v_pending": (
+        "保留",
+        "データが足りず判定が成立しない。上場から日が浅く、週足や長期の平均線が"
+        "計算できない銘柄がこれにあたる。根拠なく「ホールド」と書かないための札。",
+    ),
+    "v_na": (
+        "判断対象外",
+        "自動でリバランスされる口座の銘柄。分析しても執行されないので判断を付けない。"
+        "ただし地合いを読む材料としては使う。",
+    ),
+}
+
+# 判断ラベル → 用語キー。ラベルの文字列を id に使えないので対応表を持つ
+VERDICT_TERM = {
+    "買い": "v_buy",
+    "積増し": "v_add",
+    "ホールド": "v_hold",
+    "部分利確": "v_trim",
+    "売却": "v_sell",
+    "見送り": "v_pass",
+    "決算後に再判定": "v_after_earnings",
+    "保留": "v_pending",
+    NOT_APPLICABLE: "v_na",
+}
+
 # ダークテーマ想定。外部リソースは読み込まない (フォント・スクリプト・画像すべて)。
 #
 # 背景を透過にせず明示的に塗るのは、morning brief と違ってこの HTML が
@@ -134,6 +256,24 @@ p  { margin: 6px 0; }
 .warn-box { border-color: var(--warn); }
 .foot { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line);
         color: var(--muted); font-size: 11px; }
+/* 用語ラベル: 押すと説明が出る。本文に毎日同じ説明を書かないための逃がし先 */
+.term { font: inherit; color: inherit; background: none; border: 0; padding: 0;
+        cursor: help; border-bottom: 1px dotted currentColor; }
+.term:hover, .term:focus-visible { color: var(--accent); }
+.term::after { content: "?"; font-size: .7em; vertical-align: super;
+               margin-left: 1px; opacity: .65; }
+.term.plain::after { content: none; }
+[popover] { display: none; margin: auto; max-width: 420px; padding: 18px 20px; border-radius: 12px;
+            border: 1px solid var(--line); background: var(--panel2); color: var(--fg);
+            font-size: 13px; line-height: 1.8; }
+[popover]:popover-open { display: block; }
+[popover]::backdrop { background: rgba(0, 0, 0, .55); }
+[popover] b { color: var(--accent); display: block; margin-bottom: 6px; font-size: 14px; }
+[popover] p { margin: 0; }
+[popover] dl { margin: 0; }
+[popover] dt { color: var(--accent); font-weight: 600; margin-top: 10px; }
+[popover] dd { margin: 0; color: var(--fg); }
+.gloss-all { max-width: 560px; max-height: 78vh; overflow: auto; }
 """
 
 
@@ -266,7 +406,7 @@ def signal_bars(signals: dict) -> str:
         extra = esc(labels.get(key, "")) or mark
         cells.append(
             f'<div class="ax" style="color:{color}">'
-            f'<div class="bar"></div><div class="nm">{esc(name)}</div>'
+            f'<div class="bar"></div><div class="nm">{term(key, name)}</div>'
             f'<div class="lb">{extra}</div></div>'
         )
     return f'<div class="sig">{"".join(cells)}</div>'
@@ -308,7 +448,7 @@ def level_axis(price, levels: dict, currency: str) -> str:
         f'<div class="mk" style="left:{pos(v):.1f}%;background:{c}" title="{esc(n)}"></div>'
         for _, n, c, v in values
     )
-    legend = " / ".join(f"{esc(n)} {money(v, currency)}" for _, n, _, v in values)
+    legend = " / ".join(f"{term(k, n)} {money(v, currency)}" for k, n, _, v in values)
     return (
         f'<div class="axis"><div class="track"><div class="line"></div>{bars}'
         f'<div class="dot" style="left:{pos(float(price)):.1f}%"></div></div>'
@@ -345,7 +485,8 @@ def range_axis(rng: dict, price, currency: str) -> str:
         f'<div class="mk" style="left:100%;background:var(--accent)"></div>'
         f'<div class="dot" style="left:{marker:.1f}%"></div></div>'
         f'<div class="legend">'
-        f"<span>20日レンジ {money(lo, currency)} 〜 {money(hi, currency)}</span>"
+        f"<span>{term('range20', '20日レンジ')} "
+        f"{money(lo, currency)} 〜 {money(hi, currency)}</span>"
         f"<span>終値位置 {pct:.0f}%</span></div></div>"
     )
 
@@ -368,7 +509,7 @@ def score_bar(score: float) -> str:
         f'background:var(--panel2);overflow:hidden">'
         f'<div style="height:100%;width:{pct:.0f}%;background:var(--accent)"></div></div>'
         f'<div class="legend" style="display:flex;justify-content:space-between;'
-        f'color:var(--muted);font-size:11px"><span>score</span>'
+        f'color:var(--muted);font-size:11px"><span>{term("score", "score")}</span>'
         f'<span class="num">{score:.1f} ATR</span></div></div>'
     )
 
@@ -386,7 +527,52 @@ def earnings_chip(earnings: dict) -> str:
     if not note:
         return ""
     cls = "chip warn" if (earnings or {}).get("warn") else "chip"
-    return f'<div style="margin-top:8px"><span class="{cls}">{esc(note)}</span></div>'
+    return f'<div style="margin-top:8px"><span class="{cls}">{term("earnings", note)}</span></div>'
+
+
+def term(key: str, text: str | None = None) -> str:
+    """用語に説明のポップオーバーを付けたラベルを返す。
+
+    ポップオーバー本体は `glossary_html()` が末尾にまとめて 1 つずつ出す。
+    同じ用語が何度出てきても実体は 1 つで、ここは参照だけを作る。
+
+    `title` 属性を併記するのは、Popover API に未対応のブラウザでも
+    ホバーで説明が出るようにするため (JavaScript は使わない)。
+
+    Args:
+        key: GLOSSARY のキー。
+        text: 表示する文字列 (省略時は用語名そのもの)。
+
+    Returns:
+        HTML の断片。キーが未定義なら素のテキストを返す。
+    """
+    if key not in GLOSSARY:
+        return esc(text or key)
+    name, desc = GLOSSARY[key]
+    shown = name if text is None else text
+    return (
+        f'<button class="term" type="button" popovertarget="g-{key}" '
+        f'title="{esc(desc)}">{esc(shown)}</button>'
+    )
+
+
+def glossary_html() -> str:
+    """全用語のポップオーバー本体と、一覧を開くボタンを出す。
+
+    Returns:
+        HTML の断片。
+    """
+    pops = "".join(
+        f'<div popover id="g-{key}"><b>{esc(name)}</b><p>{esc(desc)}</p></div>'
+        for key, (name, desc) in GLOSSARY.items()
+    )
+    items = "".join(
+        f"<dt>{esc(name)}</dt><dd>{esc(desc)}</dd>" for name, desc in GLOSSARY.values()
+    )
+    return (
+        f"{pops}"
+        f'<div popover id="g-all" class="gloss-all"><b>用語</b><dl>{items}</dl></div>'
+    )
 
 
 def verdict_badge(verdict: str) -> str:
@@ -399,7 +585,9 @@ def verdict_badge(verdict: str) -> str:
         HTML の断片。
     """
     color = VERDICT_COLOR.get(verdict, "var(--muted)")
-    return f'<span class="badge" style="color:{color}">{esc(verdict)}</span>'
+    key = VERDICT_TERM.get(verdict)
+    inner = term(key, verdict) if key else esc(verdict)
+    return f'<span class="badge" style="color:{color}">{inner}</span>'
 
 
 def position_card(pos: dict) -> str:
@@ -414,6 +602,7 @@ def position_card(pos: dict) -> str:
     where = f"holdings[{pos.get('ticker', '?')}]"
     ticker = pos["ticker"]
     currency = pos["currency"]
+    name = pos.get("name") or ""
     price = require(pos, "price", where)
     prose = require(pos, "prose", where)
     # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
@@ -424,7 +613,9 @@ def position_card(pos: dict) -> str:
     card_cls = "card ref" if pos.get("reference_only") else "card"
     scenario = ""
     if pos.get("scenario"):
-        scenario = f'<span class="chip">シナリオ {esc(pos["scenario"])}</span>'
+        scenario = (
+            f'<span class="chip">{term("scenario", "シナリオ")} {esc(pos["scenario"])}</span>'
+        )
 
     reasons = ""
     if prose.get("reasons"):
@@ -437,7 +628,7 @@ def position_card(pos: dict) -> str:
     return (
         f'<div class="{card_cls}">'
         f'<div class="top"><div>'
-        f'<h3>{esc(ticker)} {esc(pos.get("name"))}</h3>'
+        f'<h3>{esc(ticker)} {esc(name)}</h3>'
         f'<div class="sub num">{esc(shares_text(pos.get("shares")))}</div></div>'
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
@@ -466,6 +657,7 @@ def candidate_card(cand: dict) -> str:
     where = f"candidates[{cand.get('ticker', '?')}]"
     ticker = cand["ticker"]
     currency = cand["currency"]
+    name = cand.get("name") or ""
     price = require(cand, "price", where)
     prose = require(cand, "prose", where)
     verdict = cand["verdict"]
@@ -484,18 +676,19 @@ def candidate_card(cand: dict) -> str:
 
     parts = []
     if cand.get("atr_pct") is not None:
-        parts.append(f"ATR {cand['atr_pct']:.1f}%")
+        parts.append(f"{term('atr', 'ATR')} {cand['atr_pct']:.1f}%")
     if cand.get("turnover"):
-        parts.append(f"売買代金 {cand['turnover']}")
+        parts.append(f"売買代金 {esc(cand['turnover'])}")
+    # parts は term() が返す HTML を含むので、ここから先はエスケープしない
     meta = " · ".join(parts)
     return (
         f'<div class="card"><div class="top"><div>'
-        f'<h3>{esc(ticker)} {esc(cand.get("name"))}</h3>'
+        f'<h3>{esc(ticker)} {esc(name)}</h3>'
         f'<div class="sub">{esc(require(cand, "pass_reason", where))}</div></div>'
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(cand.get("change_pct"))}</span></div>'
-        f'<div class="sub num" style="margin-top:2px">{esc(meta)}</div>'
+        f'<div class="sub num" style="margin-top:2px">{meta}</div>'
         f"{score_bar(float(require(cand, 'score_atr', where)))}"
         f"{signal_bars(cand['signals'])}"
         f"{sparkline(cand.get('closes') or [])}"
@@ -591,7 +784,8 @@ def render(data: dict) -> str:
     tone_html = ""
     if tone.get("label") or tone.get("prose"):
         tone_html = (
-            f'<div class="banner"><div class="k">地合い — {esc(tone.get("label"))}</div>'
+            f'<div class="banner"><div class="k">'
+            f'{term("market_tone", "地合い")} — {esc(tone.get("label"))}</div>'
             f'<p>{esc(tone.get("prose"))}</p></div>'
         )
 
@@ -637,7 +831,10 @@ def render(data: dict) -> str:
     cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market={esc(market)})"
     if failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
-    eff_head = f"実効保有 — Investment {esc(as_of)} + 執行記録 {esc(eff.get('executions', 0))} 件"
+    eff_head = (
+        f"{term('effective_holdings', '実効保有')} — Investment {esc(as_of)} "
+        f"+ 執行記録 {esc(eff.get('executions', 0))} 件"
+    )
     ref_count = sum(1 for p in holdings if p.get("reference_only"))
     hold_head = f"保有 {len(holdings)} 銘柄"
     if ref_count:
@@ -657,7 +854,8 @@ def render(data: dict) -> str:
   <div class="k">{eff_head}</div>
   {eff_lines}
 </div>
-<div class="banner"><div class="k">確定足</div><p class="num">{esc(bar_line)}</p></div>
+<div class="banner"><div class="k">{term("closed_bar", "確定足")}</div>
+  <p class="num">{esc(bar_line)}</p></div>
 {tone_html}
 <h2>{hold_head}</h2>
 {hold_html}
@@ -669,8 +867,11 @@ def render(data: dict) -> str:
 {notes_box("警告", data.get("warnings") or [], warn=True)}
 <div class="foot">
   分析・提案のみ。このプロジェクトに発注機能は無い。判断の最終決定はりーすさん。<br>
+  点線の付いた語は押すと説明が出る →
+  <button class="term plain" type="button" popovertarget="g-all">用語をまとめて見る</button><br>
   生成: report.py（中間表現の仕様は docs/report-contract.md）
 </div>
+{glossary_html()}
 </div></body></html>"""
 
 

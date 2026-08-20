@@ -211,6 +211,33 @@ def fetch_instrument_type(ticker: str, market: str | None = None) -> str | None:
     return normalize_instrument_type(meta.get("instrumentType"))
 
 
+def fetch_display_name(ticker: str, market: str | None = None) -> str | None:
+    """銘柄の表示名を取得する。
+
+    `history_metadata` から取る。ETF でも 404 にならず、`fetch_instrument_type()` と
+    同じレスポンスで済む。**日本株でも英語名が返る** ("7203" → "Toyota Motor
+    Corporation")。日本語で出したい銘柄は `config/universe.py` の `NAMES_JP` に
+    書く (→ ADR-0022)。1 銘柄 1 リクエストなので、呼ぶ側は候補に絞ること。
+
+    Args:
+        ticker: 生ティッカー ("7203", "AAPL")。
+        market: "jp" / "us"。省略時は detect_market() で推定。
+
+    Returns:
+        表示名。取得できなければ None。
+    """
+    import yfinance as yf  # import が遅いので使用時に読み込む
+
+    market = market or detect_market(ticker)
+    symbol = normalize_ticker(ticker, market)
+    try:
+        meta = yf.Ticker(symbol).history_metadata or {}
+    except Exception:
+        return None
+    name = meta.get("longName") or meta.get("shortName")
+    return str(name).strip() or None if name else None
+
+
 def fetch_next_earnings(ticker: str, market: str | None = None) -> dt.date | None:
     """次回 (未来) または直近 (過去) の決算発表日を返す。
 

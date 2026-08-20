@@ -157,19 +157,25 @@
         "reference_only": { "type": "boolean" },
         "prose": { "$ref": "#/$defs/positionProse" }
       },
-      "allOf": [{
-        "if": {
-          "required": ["reference_only"],
-          "properties": { "reference_only": { "const": true } }
-        },
-        "then": { "properties": { "verdict": { "const": "—" } } },
-        "else": {
-          "required": ["verdict"],
-          "properties": {
-            "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留"] }
+      "allOf": [
+        {
+          "if": {
+            "required": ["reference_only"],
+            "properties": { "reference_only": { "const": true } }
+          },
+          "then": { "properties": { "verdict": { "const": "—" } } },
+          "else": {
+            "required": ["verdict"],
+            "properties": {
+              "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留"] }
+            }
           }
+        },
+        {
+          "if": { "properties": { "currency": { "const": "JPY" } } },
+          "then": { "required": ["name"] }
         }
-      }]
+      ]
     },
     "candidateRange": {
       "type": "object", "additionalProperties": false,
@@ -238,7 +244,10 @@
         },
         {
           "if": { "properties": { "market": { "const": "jp" } } },
-          "then": { "properties": { "currency": { "const": "JPY" } } },
+          "then": {
+            "required": ["name"],
+            "properties": { "currency": { "const": "JPY" } }
+          },
           "else": { "properties": { "currency": { "const": "USD" } } }
         }
       ]

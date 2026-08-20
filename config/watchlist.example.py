@@ -16,5 +16,10 @@
 # 日本株: 4 桁コードで書く (screen.py が .T を付けて正規化する)
 WATCHLIST_JP: list[str] = []
 
+# 日本株の銘柄名 (任意)。4 桁コードだけでは何の会社か分からないので、
+# 出力に日本語名を出したい銘柄はここに書く。書かなければ yfinance の英語名になる。
+# 例: {"7203": "トヨタ自動車"}
+WATCHLIST_NAMES_JP: dict[str, str] = {}
+
 # 米国株・ETF
 WATCHLIST_US: list[str] = []
