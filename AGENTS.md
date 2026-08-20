@@ -40,6 +40,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - **決算日を取得できなかった個別株は「不明」を出力に出す** (ETF は出さないのが正常)。
   切り分けは `lib/datasource.py` の `fetch_instrument_type()`
   → [ADR-0016](docs/adr/0016-surface-unavailable-earnings-date.md)
+- **外部参照 (Web / IR) の可否は実行モードで決まる。** 定期実行は引かない / 対話実行は引いてよい。
+  正は `docs/output-contract.md` の「実行モードと外部参照」。**手動確認リストで埋めない**
 
 ## 構成
 
@@ -71,17 +73,22 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `docs/report-contract.schema.json` — **中間表現JSONの構造の正**。型・必須・語彙は
   JSON Schemaで検証し、業務上の組み合わせは`lib/contract.py`で検証する
   → [ADR-0021](docs/adr/0021-json-schema-for-report-contract.md)
-- `docs/report-contract.md` — **中間表現の意味・組み合わせ規則の正**。
-  判断と機械データの境界をここで定義する → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
+- `docs/report-contract.md` — **中間表現の意味・組み合わせ規則・判断ラベル定義の正**。
+  判断と機械データの境界をここで定義する
+  → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
 - `lib/verdicts.py` — 判断ラベルの定義と「資金が動く判断」の判定。
   `ACTIONABLE_VERDICTS` が **Slack のメンションを鳴らす条件の正** (買い / 積増し / 売却)
 - `report.py` — 中間表現 → 自己完結 HTML (`reports/*.html`)。判断も指標計算もしない。
   外部リソースを読み込まない。**用語の説明は本文に書かず `GLOSSARY` のポップオーバーに置く**
   → [ADR-0024](docs/adr/0024-glossary-popovers.md)
+  あわせて `reports/latest.json` を更新する（次回のシリーズ分析の起点）
 - `notify.py` — 中間表現 → Slack (Incoming Webhook)。**LLM は Slack ツールを呼ばない**。
   毎日投稿し、メンションは資金が動く判断がある日だけ
   → [ADR-0022](docs/adr/0022-slack-webhook-notification.md)
-- `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
+- `journal/README.md` — **ジャーナルの役割と書式の正**。ジャーナルが持つのは
+  **執行の台帳と運用メモの 2 つだけで、日々の分析は書かない** (正は中間表現 JSON)
+  → [ADR-0025](docs/adr/0025-journal-as-ledger-and-memo.md)。
+  本体 `journal/journal.md` は **git 追跡対象外**
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
   実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは
   判定時刻を注入して検証する (`drop_forming_bar(..., now=...)`)

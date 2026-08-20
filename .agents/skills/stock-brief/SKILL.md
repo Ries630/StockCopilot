@@ -33,7 +33,7 @@ STEP 2  stock-screen   候補スクリーニング
 STEP 3  中間表現 JSON   判断と機械データを 1 つの器にまとめる
 STEP 4  report.py      HTML レポート
 STEP 5  notify.py      Slack 通知 (メンションは資金が動く判断がある日だけ)
-STEP 6  ジャーナル追記   同じ日付エントリに保有 → スクリーニングの順で
+STEP 6  記録            執行の台帳と運用メモ (定型の分析は書かない)
 STEP 7  チャット本文     短いサマリー
 ```
 
@@ -45,14 +45,18 @@ STEP 3 で中間表現を挟むのは、**Slack のメンションの発火条�
 `stock-check` スキルの手順をそのまま実行する (実体は
 [`.agents/skills/stock-check/SKILL.md`](../stock-check/SKILL.md))。
 STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォーマットまでを行い、
-**ジャーナル追記 (あちらの STEP 5) はここでは行わない** — STEP 6 でスクリーニングと
-まとめて書く。
+**記録 (あちらの STEP 5) はここでは行わない** — STEP 6 でまとめて扱う。
+
+シリーズ分析の起点は `reports/latest.json` (前回の中間表現)。**無ければ
+`journal/journal.md` の最終エントリを読む** — 2026-08-20 までのエントリは定型の分析を
+含んでいる。この fallback は移行期のためのもので、JSON が溜まったら消す
+(→ [`docs/adr/0025-journal-as-ledger-and-memo.md`](../../../docs/adr/0025-journal-as-ledger-and-memo.md))。
 
 ## STEP 2. 候補スクリーニング
 
 同様に `stock-screen` スキルの手順を実行する (実体は
 [`.agents/skills/stock-screen/SKILL.md`](../stock-screen/SKILL.md))。
-こちらもジャーナル追記は STEP 6 に回す。
+こちらも記録は STEP 6 に回す。
 
 ただし `stock-screen` の STEP 1 は、人間向け表示ではなく次の機械出力で実行する。
 
@@ -91,7 +95,7 @@ STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
   → [ADR-0024](../../../docs/adr/0024-glossary-popovers.md)
 - **判断ラベルは 2 系統を取り違えない。** 保有は ホールド / 積増し / 部分利確 / 売却 / 保留、
   候補は 買い / 見送り / 決算後に再判定 / 保留。定義の正は
-  [`journal/README.md`](../../../journal/README.md)
+  [`docs/report-contract.md`](../../../docs/report-contract.md) の「判断ラベル」
 - **自動運用口座の銘柄は `reference_only: true`** にし、`verdict` は `"—"` を入れる
 - **確定足が前回エントリと同じなら `stale_bars: true`**
 - **`bars.jp` / `bars.us` は `screen.py --json` の `bars` から移す。** 実行日や平日から
@@ -131,15 +135,27 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 メンションの発火条件と対象ラベルは `lib/verdicts.py` の `ACTIONABLE_VERDICTS` が正。
 **ここで裁量を挟まない。**
 
-## STEP 6. ジャーナル追記
+## STEP 6. 記録
 
-`journal/journal.md` の**同じ日付エントリ**に、保有分析 → スクリーニングの順で書く。
-**書式の正は [`journal/README.md`](../../../journal/README.md)。**
+**定型の分析をジャーナルに書かない。** 分析・判断・前提・Slack 投稿の結果はすべて
+中間表現 JSON に入っており、人が読むのは HTML レポート
+(→ [`docs/adr/0025-journal-as-ledger-and-memo.md`](../../../docs/adr/0025-journal-as-ledger-and-memo.md))。
 
-加えてこのスキルからは次の 2 節を残す:
+`journal/journal.md` に書くのは、**その日に該当があったときだけ**の次の 4 種類。
+毎日は発生しない。**書式の正は [`journal/README.md`](../../../journal/README.md)。**
 
-- `### 本エントリでの前提` — 確認を取らずに置いた前提 (JSON の `assumptions` と同じ内容)
-- `### Slack 投稿` — STEP 5 の結果 1 行と、生成した HTML のパス
+| 書くもの | いつ |
+|---|---|
+| `### 執行` | 売買の報告を受けたとき |
+| 訂正 | 過去の分析の誤りが分かったとき (**原因を必ず添える**) |
+| 昇格候補の 1 回目の観測 | 「もう一度起きたら運用ルールへ」の保留状態 |
+| 規約の例外 | 規約に反する扱いをしたとき |
+
+**該当が無ければ何も書かない。** 「本日は特記なし」も書かない — 空振りの行が積むと、
+例外の記録という節の意味が薄れる。
+
+定期実行では外部参照を行わないため、`### 対話実行での追補と出典` はこのスキルからは
+書かない (対話実行のときだけ)。
 
 ## STEP 7. チャット本文
 
@@ -155,6 +171,9 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 📄 reports/2026-08-20_evening.html
 📮 Slack: sent (メンションあり)
 ```
+
+ジャーナルに書いたものがあれば最後に 1 行足す (`📝 ジャーナル: 執行 1 件を記録`)。
+**何も書かなかった日は何も足さない。**
 
 資金が動く判断が無い日は `🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)` と書く。
 **これは正常であり、無理に候補を出さない。**
@@ -172,4 +191,9 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 - **候補ゼロを失敗と扱わない。** 母集団が狭いので出ない日のほうが多い
 - **`reports/` の中身をリポジトリの追跡対象ファイルに貼らない。** Issue・PR・
   コミットメッセージに銘柄や株数を書かない (必要なら「保有銘柄A」に置き換える)
-- **決算日が取得できない銘柄は「不明」と明記して進む。** Web 検索で補完しない
+- **外部参照 (Web / IR) を行わない。** 定期実行は無人で、外部情報が判断に入る前に
+  人が検証できないため。決算日が取得できない銘柄は「不明」と明記して進み、判断は
+  `決算後に再判定` に倒す。**これは劣化ではなく設計どおりの挙動**
+  (→ [`docs/adr/0016-surface-unavailable-earnings-date.md`](../../../docs/adr/0016-surface-unavailable-earnings-date.md))。
+  可否の正は [`docs/output-contract.md`](../../../docs/output-contract.md) の
+  「実行モードと外部参照」で、**対話実行では引いてよい**
