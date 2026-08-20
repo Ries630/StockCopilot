@@ -413,7 +413,10 @@ def position_card(pos: dict) -> str:
     currency = require(pos, "currency", where)
     price = require(pos, "price", where)
     prose = require(pos, "prose", where)
-    verdict = pos.get("verdict") or NOT_APPLICABLE
+    # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
+    # 既定値に潰すと、書き漏らした「売却」が「判断なし」として表示され、
+    # ヒーローからも actionable_items() からも消える
+    verdict = NOT_APPLICABLE if pos.get("reference_only") else require(pos, "verdict", where)
 
     card_cls = "card ref" if pos.get("reference_only") else "card"
     scenario = ""
@@ -584,8 +587,10 @@ def render(data: dict) -> str:
             f'<p>{esc(tone.get("prose"))}</p></div>'
         )
 
-    holdings = data.get("holdings") or []
-    candidates = data.get("candidates") or []
+    # どちらも契約上の必須キー。get(..., []) で潰すと、LLM が書き漏らした日が
+    # 「保有なし・候補なし」という正常な出力に化けて区別できなくなる
+    holdings = require(data, "holdings", "root")
+    candidates = require(data, "candidates", "root")
     cand_html = (
         f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
         if candidates

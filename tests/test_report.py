@@ -178,6 +178,39 @@ def test_missing_required_key_raises() -> None:
         report.render(base_data(holdings=[bad]))
 
 
+def test_missing_holdings_or_candidates_raises() -> None:
+    """必須のリストを空に潰さない。
+
+    潰すと「LLM が書き漏らした日」が「保有なし・候補なし」という正常な出力に化け、
+    静穏日と区別できなくなる (レビュー指摘 / docs/report-contract.md)。
+    """
+    for key in ("holdings", "candidates"):
+        broken = base_data()
+        del broken[key]
+        with pytest.raises(KeyError, match=key):
+            report.render(broken)
+
+
+def test_missing_verdict_raises_for_normal_position() -> None:
+    """判断対象外でない銘柄の verdict 欠落を「—」に潰さない。
+
+    潰すと、書き漏らした「売却」がヒーローにも actionable_items() にも出ず、
+    「判断なし」として表示される。
+    """
+    bad = position()
+    del bad["verdict"]
+    with pytest.raises(KeyError, match="verdict"):
+        report.render(base_data(holdings=[bad]))
+
+
+def test_reference_only_position_may_omit_verdict() -> None:
+    """自動運用口座の銘柄は判断を付けないので、欠けていてよい。"""
+    ref = position(reference_only=True)
+    del ref["verdict"]
+    html = report.render(base_data(holdings=[ref]))
+    assert report.NOT_APPLICABLE in html
+
+
 def test_no_external_resources() -> None:
     html = report.render(base_data(holdings=[position()], candidates=[candidate()]))
     for token in ("http://", "https://", "<script", "localStorage", "@import"):
