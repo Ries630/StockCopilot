@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ries630/StockCopilot/blob/main/docs/report-contract.schema.json",
+  "title": "StockCopilot evening report intermediate representation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "date", "generated_at", "bars", "holdings_as_of",
+    "effective_holdings", "holdings", "candidates", "screen", "summary"
+  ],
+  "properties": {
+    "schema": { "type": "integer", "const": 1 },
+    "date": { "$ref": "#/$defs/date" },
+    "generated_at": { "$ref": "#/$defs/jstDateTime" },
+    "bars": { "$ref": "#/$defs/bars" },
+    "stale_bars": { "type": "boolean" },
+    "holdings_as_of": {
+      "type": "array", "minItems": 1,
+      "items": { "$ref": "#/$defs/holdingAsOf" }
+    },
+    "effective_holdings": { "$ref": "#/$defs/effectiveHoldings" },
+    "market_tone": { "$ref": "#/$defs/marketTone" },
+    "holdings": { "type": "array", "items": { "$ref": "#/$defs/position" } },
+    "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
+    "screen": { "$ref": "#/$defs/screen" },
+    "summary": { "$ref": "#/$defs/nonEmptyString" },
+    "assumptions": { "$ref": "#/$defs/stringList" },
+    "warnings": { "$ref": "#/$defs/stringList" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "pattern": "\\S" },
+    "positiveNumber": { "type": "number", "exclusiveMinimum": 0 },
+    "nonNegativeNumber": { "type": "number", "minimum": 0 },
+    "stringList": {
+      "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "date": { "type": "string", "format": "date" },
+    "jstDateTime": {
+      "type": "string", "format": "date-time", "pattern": "\\+09:00$"
+    },
+    "bars": {
+      "type": "object", "additionalProperties": false,
+      "required": ["jp", "us"],
+      "properties": {
+        "jp": { "$ref": "#/$defs/date" },
+        "us": { "$ref": "#/$defs/date" }
+      }
+    },
+    "holdingAsOf": {
+      "type": "object", "additionalProperties": false,
+      "required": ["as_of", "label"],
+      "properties": {
+        "as_of": { "$ref": "#/$defs/date" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "effectiveHoldings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executions", "lines"],
+      "properties": {
+        "executions": { "type": "integer", "minimum": 0 },
+        "lines": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "marketTone": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "prose": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "anyOf": [{ "required": ["label"] }, { "required": ["prose"] }]
+    },
+    "screen": {
+      "type": "object", "additionalProperties": false,
+      "required": ["universe", "market", "failures"],
+      "properties": {
+        "universe": { "type": "integer", "minimum": 0 },
+        "market": { "enum": ["jp", "us", "all"] },
+        "failures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "signalValue": { "enum": ["good", "warn", "bad", "unknown"] },
+    "signals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["weekly", "daily", "overheat", "volume"],
+      "properties": {
+        "weekly": { "$ref": "#/$defs/signalValue" },
+        "daily": { "$ref": "#/$defs/signalValue" },
+        "overheat": { "$ref": "#/$defs/signalValue" },
+        "volume": { "$ref": "#/$defs/signalValue" },
+        "labels": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "weekly": { "$ref": "#/$defs/nonEmptyString" },
+            "daily": { "$ref": "#/$defs/nonEmptyString" },
+            "overheat": { "$ref": "#/$defs/nonEmptyString" },
+            "volume": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        }
+      }
+    },
+    "positionLevels": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "support": { "$ref": "#/$defs/positiveNumber" },
+        "resistance": { "$ref": "#/$defs/positiveNumber" },
+        "invalidation": { "$ref": "#/$defs/positiveNumber" }
+      }
+    },
+    "candidateLevels": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "support": { "$ref": "#/$defs/positiveNumber" },
+        "resistance": { "$ref": "#/$defs/positiveNumber" }
+      }
+    },
+    "earnings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["note"],
+      "properties": {
+        "note": { "$ref": "#/$defs/nonEmptyString" },
+        "warn": { "type": "boolean" }
+      }
+    },
+    "positionProse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["change", "scenario"],
+      "properties": {
+        "change": { "$ref": "#/$defs/nonEmptyString" },
+        "scenario": { "$ref": "#/$defs/nonEmptyString" },
+        "reasons": { "$ref": "#/$defs/stringList" },
+        "trigger": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ticker", "currency", "price", "signals", "prose"],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/nonEmptyString" },
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "shares": { "$ref": "#/$defs/positiveNumber" },
+        "currency": { "enum": ["JPY", "USD"] },
+        "price": { "$ref": "#/$defs/positiveNumber" },
+        "change_pct": { "type": "number" },
+        "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留", "—"] },
+        "scenario": { "enum": ["前進", "停滞", "否定接近"] },
+        "signals": { "$ref": "#/$defs/signals" },
+        "levels": { "$ref": "#/$defs/positionLevels" },
+        "closes": {
+          "type": "array", "items": { "$ref": "#/$defs/positiveNumber" }
+        },
+        "earnings": { "$ref": "#/$defs/earnings" },
+        "reference_only": { "type": "boolean" },
+        "prose": { "$ref": "#/$defs/positionProse" }
+      },
+      "allOf": [{
+        "if": {
+          "required": ["reference_only"],
+          "properties": { "reference_only": { "const": true } }
+        },
+        "then": { "properties": { "verdict": { "const": "—" } } },
+        "else": {
+          "required": ["verdict"],
+          "properties": {
+            "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留"] }
+          }
+        }
+      }]
+    },
+    "candidateRange": {
+      "type": "object", "additionalProperties": false,
+      "required": ["low", "high", "pos_pct"],
+      "properties": {
+        "low": { "$ref": "#/$defs/positiveNumber" },
+        "high": { "$ref": "#/$defs/positiveNumber" },
+        "pos_pct": { "type": "number" }
+      }
+    },
+    "candidateProse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["check"],
+      "properties": {
+        "strong": { "$ref": "#/$defs/stringList" },
+        "weak": { "$ref": "#/$defs/stringList" },
+        "check": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "ticker", "market", "currency", "price", "score_atr", "pass_reason",
+        "range", "verdict", "signals", "prose"
+      ],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/nonEmptyString" },
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "market": { "enum": ["jp", "us"] },
+        "currency": { "enum": ["JPY", "USD"] },
+        "price": { "$ref": "#/$defs/positiveNumber" },
+        "change_pct": { "type": "number" },
+        "score_atr": { "$ref": "#/$defs/nonNegativeNumber" },
+        "pass_reason": { "$ref": "#/$defs/nonEmptyString" },
+        "range": { "$ref": "#/$defs/candidateRange" },
+        "atr_pct": { "$ref": "#/$defs/nonNegativeNumber" },
+        "turnover": { "$ref": "#/$defs/nonEmptyString" },
+        "earnings": { "$ref": "#/$defs/earnings" },
+        "verdict": { "enum": ["買い", "見送り", "決算後に再判定", "保留"] },
+        "signals": { "$ref": "#/$defs/signals" },
+        "levels": { "$ref": "#/$defs/candidateLevels" },
+        "closes": {
+          "type": "array", "items": { "$ref": "#/$defs/positiveNumber" }
+        },
+        "prose": { "$ref": "#/$defs/candidateProse" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["verdict"],
+            "properties": { "verdict": { "const": "買い" } }
+          },
+          "then": {
+            "properties": {
+              "prose": {
+                "required": ["weak"],
+                "properties": {
+                  "weak": {
+                    "type": "array", "minItems": 1,
+                    "items": { "$ref": "#/$defs/nonEmptyString" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "market": { "const": "jp" } } },
+          "then": { "properties": { "currency": { "const": "JPY" } } },
+          "else": { "properties": { "currency": { "const": "USD" } } }
+        }
+      ]
+    }
+  }
+}

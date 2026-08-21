@@ -60,6 +60,9 @@ uv run --with ruff ruff check .  # lint
 - `docs/output-contract.md` — **`screen.py` / `analyze.py` の出力の読み方の正**。
   決算注記・保有の鮮度・警告の意味はここに集約する (スキル側に写経しない)
   → [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)
+- `docs/report-contract.schema.json` — **中間表現JSONの構造の正**。型・必須・語彙は
+  JSON Schemaで検証し、業務上の組み合わせは`lib/contract.py`で検証する
+  → [ADR-0021](docs/adr/0021-json-schema-for-report-contract.md)
 - `journal/README.md` — ジャーナルの書式仕様 (本体 `journal/journal.md` は **git 追跡対象外**)
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
   実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは

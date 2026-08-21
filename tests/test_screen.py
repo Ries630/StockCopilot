@@ -10,6 +10,9 @@
 
 from __future__ import annotations
 
+import json
+import sys
+
 import pandas as pd
 import pytest
 
@@ -226,3 +229,74 @@ def test_attach_earnings_survives_failure(monkeypatch: pytest.MonkeyPatch) -> No
     candidates = [{"ticker": "TEST", "market": "us"}]
     screen.attach_earnings(candidates)
     assert candidates[0]["earnings_note"] == ""
+
+
+def test_json_candidate_uses_report_keys_and_percent_units() -> None:
+    """LLMへキー名・単位変換を委ねない。"""
+    row = {
+        "ticker": "TEST",
+        "market": "us",
+        "close": 121.0,
+        "change_pct": 2.5,
+        "score": 1.2,
+        "reasons": ["20日レンジを上に突破"],
+        "low20": 100.0,
+        "high20": 120.0,
+        "range_pos": 1.05,
+        "atr_pct": 2.0,
+        "turnover_avg20": 12_345_678.0,
+        "earnings_note": "⚠ 決算 2026-08-25",
+    }
+
+    result = screen.json_candidate(row)
+
+    assert result["market"] == "us"
+    assert result["currency"] == "USD"
+    assert result["price"] == 121.0
+    assert result["score_atr"] == 1.2
+    assert result["pass_reason"] == "20日レンジを上に突破"
+    assert result["range"] == {"low": 100.0, "high": 120.0, "pos_pct": 105.0}
+    assert result["turnover"] == "$12,345,678"
+    assert result["earnings"] == {"note": "⚠ 決算 2026-08-25", "warn": True}
+
+
+def test_json_output_is_machine_readable_and_counts_failures(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """取得警告をJSONの前へ出さず、件数と内容を構造化する。"""
+    universe = [("GOOD", "jp"), ("FAIL", "jp")]
+    good = {
+        "ticker": "GOOD",
+        "market": "jp",
+        "close": 110.0,
+        "change_pct": 1.0,
+        "score": 1.0,
+        "reasons": ["直近足の動き"],
+        "low20": 100.0,
+        "high20": 120.0,
+        "range_pos": 0.5,
+        "atr_pct": 2.0,
+        "turnover_avg20": 1_000_000_000.0,
+    }
+
+    def fake_screen_one(ticker: str, market: str) -> dict:
+        if ticker == "FAIL":
+            raise RuntimeError("取得できない")
+        return good
+
+    monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
+    monkeypatch.setattr(screen, "screen_one", fake_screen_one)
+    monkeypatch.setattr(sys, "argv", ["screen.py", "--json", "--market", "jp"])
+
+    screen.main()
+
+    output = capsys.readouterr().out
+    assert output.lstrip().startswith("{")
+    parsed = json.loads(output)
+    assert parsed["universe"] == 2
+    assert parsed["market"] == "jp"
+    assert parsed["failures"] == 1
+    assert parsed["failure_details"] == [{"ticker": "FAIL", "message": "取得できない"}]
+    assert parsed["candidates"][0]["market"] == "jp"
+    assert parsed["candidates"][0]["currency"] == "JPY"
+    assert parsed["candidates"][0]["range"]["pos_pct"] == 50.0

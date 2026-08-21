@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["pytest", "yfinance>=0.2.40", "pandas", "numpy", "ta"]
+# dependencies = ["pytest", "yfinance>=0.2.40", "pandas", "numpy", "ta", "jsonschema>=4.25"]
 # ///
 """テストランナー。
 
