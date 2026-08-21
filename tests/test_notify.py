@@ -4,7 +4,9 @@
 呼び出し内容だけを検証する (AGENTS.md の環境前提)。
 """
 
+import json
 import pathlib
+import sys
 
 import pytest
 
@@ -180,6 +182,60 @@ def test_warnings_and_stale_bars_are_included() -> None:
     body = text_of({"blocks": blocks})
     assert "確定足は前回から変わらず" in body
     assert "取得に失敗した銘柄が 1 件" in body
+
+
+def test_main_adds_contract_warnings_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    isolated_env: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """単体実行でも表示項目の欠落をSlack本文へ載せる。"""
+    data = base_data()
+    del data["summary"]
+    src = tmp_path / "brief.json"
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["notify.py", str(src), "--dry-run"])
+
+    notify.main()
+
+    output = capsys.readouterr().out
+    assert "'summary' が無い" in output
+    assert "不明" in output
+
+
+def test_contract_warnings_precede_long_runtime_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    isolated_env: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """契約警告をSlackの上限で落とさない。"""
+    data = base_data(warnings=["運用警告" * 1000 for _ in range(20)])
+    del data["summary"]
+    src = tmp_path / "brief.json"
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["notify.py", str(src), "--dry-run"])
+
+    notify.main()
+
+    assert "'summary' が無い" in capsys.readouterr().out
+
+
+def test_main_rejects_decision_contract_violation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    isolated_env: pathlib.Path,
+) -> None:
+    """判断項目の欠落はSlack単体実行でも停止する。"""
+    data = base_data()
+    del data["candidates"]
+    src = tmp_path / "brief.json"
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["notify.py", str(src), "--dry-run"])
+
+    with pytest.raises(KeyError, match="candidates"):
+        notify.main()
 
 
 def test_dynamic_mrkdwn_is_escaped_except_for_the_controlled_mention() -> None:

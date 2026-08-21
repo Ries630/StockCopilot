@@ -2,7 +2,7 @@
 
 構造（キー・型・必須・語彙）の正は `docs/report-contract.schema.json`。
 このモジュールはJSON Schemaを適用し、Schemaだけでは読みづらくなる業務上の
-組み合わせ規則を追加で検証する。
+組み合わせ規則と、表示項目の欠落だけを警告へ降格するseverityを追加する。
 """
 
 import json
@@ -25,6 +25,14 @@ _VALIDATOR = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
 
 SIGNAL_AXES = ("weekly", "daily", "overheat", "volume")
 """資金移動判断との組み合わせを確認する4軸。"""
+
+BAR_MARKETS = ("jp", "us")
+"""確定足の日付を表示する市場。"""
+
+ROOT_DISPLAY_KEYS = frozenset(
+    {"date", "generated_at", "bars", "holdings_as_of", "screen", "summary"}
+)
+"""トップレベルで欠落を警告へ降格できる表示項目。"""
 
 
 def _path(parts: Iterable[object]) -> str:
@@ -57,7 +65,7 @@ def _raise_contract_error(error: ValidationError) -> None:
     """
     where = _path(error.absolute_path)
     if error.validator == "required":
-        missing = next(key for key in error.validator_value if key not in error.instance)
+        missing = _missing_key(error)
         raise KeyError(
             f"{where}: 必須キー '{missing}' が無い "
             "(docs/report-contract.schema.json)"
@@ -68,6 +76,105 @@ def _raise_contract_error(error: ValidationError) -> None:
     raise ValueError(
         f"{where}: {detail}{error.message} (docs/report-contract.schema.json)"
     ) from None
+
+
+def _missing_key(error: ValidationError) -> str | None:
+    """`required`違反から欠落キーを取り出す。
+
+    Args:
+        error: jsonschemaが返した検証エラー。
+
+    Returns:
+        欠落キー。`required`違反でなければNone。
+    """
+    if error.validator != "required" or not isinstance(error.instance, dict):
+        return None
+    # jsonschemaは欠落1件につき1エラーを返す一方、validator_valueには同じ階層の
+    # 必須キー全体が入る。今回の欠落キーはエラーメッセージから特定する。
+    if error.message.startswith("'") and "' is a required property" in error.message:
+        return error.message.split("'", 2)[1]
+    return next((key for key in error.validator_value if key not in error.instance), None)
+
+
+def _is_indexed(path: tuple[object, ...], collection: str, *tail: str) -> bool:
+    """配列要素以下のJSONパスかを判定する。
+
+    Args:
+        path: `ValidationError.absolute_path`のタプル。
+        collection: トップレベルの配列名。
+        *tail: 配列indexより後ろに期待するキー。
+
+    Returns:
+        `collection[index].tail...`の形ならTrue。
+    """
+    return (
+        len(path) == len(tail) + 2
+        and path[0] == collection
+        and isinstance(path[1], int)
+        and path[2:] == tail
+    )
+
+
+def _is_display_gap(error: ValidationError) -> bool:
+    """Schema違反が表示項目の欠落だけかを判定する。
+
+    型・語彙・形式・未知キーは、表示項目であっても入力の破損なので例外のままにする。
+    severityを下げるのは`required`と`minItems`による欠落だけ。
+
+    Args:
+        error: jsonschemaが返した検証エラー。
+
+    Returns:
+        警告へ降格できる欠落ならTrue。
+    """
+    path = tuple(error.absolute_path)
+    if error.validator == "minItems" and path == ("holdings_as_of",):
+        return True
+
+    missing = _missing_key(error)
+    if missing is None:
+        return False
+    if path == ():
+        return missing in ROOT_DISPLAY_KEYS
+    if path == ("bars",):
+        return missing in BAR_MARKETS
+    if path == ("screen",):
+        return missing in {"universe", "market", "failures"}
+    if path == ("effective_holdings",):
+        return missing == "executions"
+    if _is_indexed(path, "holdings_as_of"):
+        return missing in {"as_of", "label"}
+    if _is_indexed(path, "holdings"):
+        return missing == "prose"
+    if _is_indexed(path, "holdings", "prose"):
+        return missing in {"change", "scenario"}
+    if _is_indexed(path, "candidates"):
+        if missing in {"score_atr", "pass_reason", "range"}:
+            return True
+        if missing == "prose":
+            candidate = error.instance
+            return candidate.get("verdict") != "買い"
+    if _is_indexed(path, "candidates", "range"):
+        return missing in {"low", "high", "pos_pct"}
+    if _is_indexed(path, "candidates", "prose"):
+        return missing == "check"
+    return False
+
+
+def _display_warning(error: ValidationError) -> str:
+    """表示項目の欠落を利用者向け警告へ変換する。
+
+    Args:
+        error: `_is_display_gap()`がTrueを返したエラー。
+
+    Returns:
+        HTMLとSlackへ載せる警告文。
+    """
+    where = _path(error.absolute_path)
+    missing = _missing_key(error)
+    if missing is not None:
+        return f"契約: {where} の '{missing}' が無い — 表示は「不明」"
+    return f"契約: {where} が空 — 表示は「不明」"
 
 
 def _validate_actionable_consistency(item: dict, where: str) -> None:
@@ -135,21 +242,24 @@ def _validate_candidate_market(candidate: dict, screen_market: str, where: str) 
         )
 
 
-def validate(data: dict) -> dict:
+def validate(data: dict) -> list[str]:
     """中間表現の構造と業務上の組み合わせを検証する。
 
     Args:
         data: `docs/report-contract.schema.json`に従うdict。
 
     Returns:
-        検証済みの同じdict。
+        表示項目の欠落に対する警告。問題が無ければ空リスト。
 
     Raises:
         KeyError: 必須キーが欠けている場合。
         ValueError: 構造・値・組み合わせが契約外の場合。
     """
-    error = next(_VALIDATOR.iter_errors(data), None)
-    if error is not None:
+    warnings: list[str] = []
+    for error in _VALIDATOR.iter_errors(data):
+        if _is_display_gap(error):
+            warnings.append(_display_warning(error))
+            continue
         _raise_contract_error(error)
 
     for index, position in enumerate(data["holdings"]):
@@ -157,8 +267,12 @@ def validate(data: dict) -> dict:
             _validate_actionable_consistency(position, f"holdings[{index}]")
     for index, candidate in enumerate(data["candidates"]):
         where = f"candidates[{index}]"
-        _validate_candidate_market(candidate, data["screen"]["market"], where)
+        screen_market = (data.get("screen") or {}).get("market")
+        if screen_market is not None:
+            _validate_candidate_market(candidate, screen_market, where)
         _validate_actionable_consistency(candidate, where)
-        _validate_range(candidate, where)
+        candidate_range = candidate.get("range") or {}
+        if all(key in candidate_range for key in ("low", "high", "pos_pct")):
+            _validate_range(candidate, where)
 
-    return data
+    return warnings

@@ -170,18 +170,12 @@ def test_prose_is_always_rendered() -> None:
     assert "日足終値で ¥1,100 を割ったら手仕舞い。" in html
 
 
-def test_missing_required_key_raises() -> None:
-    """既定値で埋めて進むと「書き漏らした日」と「判断が無かった日」が区別できなくなる。"""
+def test_missing_decision_key_raises() -> None:
+    """判断項目を既定値で埋めず、書き漏らした入力を停止する。"""
     broken = base_data()
-    del broken["summary"]
-    with pytest.raises(KeyError, match="summary"):
+    del broken["candidates"]
+    with pytest.raises(KeyError, match="candidates"):
         report.render(broken)
-
-    bad = position()
-    del bad["prose"]
-    with pytest.raises(KeyError, match="prose"):
-        report.render(base_data(holdings=[bad]))
-
 
 def test_missing_holdings_or_candidates_raises() -> None:
     """必須のリストを空に潰さない。
@@ -272,9 +266,10 @@ def test_fetch_failures_are_not_reported_as_zero_candidates() -> None:
     assert "3 銘柄は取得に失敗しており、判定できていない" in broken
 
 
-def test_missing_failures_count_raises() -> None:
-    with pytest.raises(KeyError, match="failures"):
-        report.render(base_data(screen={"universe": 25, "market": "all"}))
+def test_missing_failures_count_is_visible_as_unknown() -> None:
+    html = report.render(base_data(screen={"universe": 25, "market": "all"}))
+    assert "取得失敗 不明" in html
+    assert "failures" in html and "が無い" in html
 
 
 def test_missing_ticker_raises() -> None:
@@ -333,13 +328,54 @@ def test_unknown_is_still_a_valid_signal_value() -> None:
     assert "9999" in report.render(base_data(holdings=[ok]))
 
 
-def test_missing_universe_or_market_raises() -> None:
-    """どの母集団を調べたか分からないまま「候補なし」と報告しない。"""
+def test_missing_universe_or_market_is_visible_as_unknown() -> None:
+    """母集団情報の欠落を正常値に見せず「不明」と警告する。"""
     for key in ("universe", "market"):
         screen = {"universe": 25, "market": "all", "failures": 0}
         del screen[key]
-        with pytest.raises(KeyError, match=key):
-            report.render(base_data(screen=screen))
+        html = report.render(base_data(screen=screen))
+        assert "不明" in html
+        assert key in html and "が無い" in html
+
+
+def test_missing_root_display_fields_are_visible_as_unknown() -> None:
+    """見出しや総括の欠落でも処理を続け、警告と不明表示を残す。"""
+    for key in ("date", "generated_at", "summary", "bars", "holdings_as_of"):
+        data = base_data()
+        del data[key]
+        html = report.render(data)
+        assert "不明" in html
+        assert key in html and "が無い" in html
+
+
+def test_missing_display_values_are_not_replaced_with_semantic_defaults() -> None:
+    """警告へ降格した値も、有効な既定値に見せない。"""
+    data = base_data(candidates=[candidate(verdict="見送り")])
+    del data["holdings_as_of"][0]["label"]
+    del data["effective_holdings"]["executions"]
+    del data["candidates"][0]["range"]["pos_pct"]
+
+    html = report.render(data)
+
+    assert "不明 2026-07-22" in html
+    assert "執行記録 不明 件" in html
+    assert "終値位置 不明" in html
+
+
+def test_missing_card_display_fields_are_visible_as_unknown() -> None:
+    """カードの表示材料が欠けても判断項目が残る限りカードを描く。"""
+    pos = position()
+    del pos["prose"]
+    cand = candidate(verdict="見送り")
+    for key in ("score_atr", "pass_reason", "range", "prose"):
+        del cand[key]
+
+    html = report.render(base_data(holdings=[pos], candidates=[cand]))
+
+    assert html.count("不明") >= 5
+    for key in ("prose", "score_atr", "pass_reason", "range"):
+        assert key in html
+    assert "が無い" in html
 
 
 def test_schema_is_validated() -> None:
@@ -536,6 +572,21 @@ def test_no_latest_flag_skips_update(
     assert not (tmp_path / "latest.json").exists()
 
 
+def test_missing_date_does_not_crash_or_update_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """日付不明の表示警告では、比較不能なlatest更新だけを飛ばす。"""
+    src = tmp_path / "unknown_evening.json"
+    data = base_data()
+    del data["date"]
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    run_main(monkeypatch, str(src))
+
+    assert (tmp_path / "unknown_evening.html").exists()
+    assert not (tmp_path / "latest.json").exists()
+
+
 def test_historical_report_does_not_rewind_latest(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
@@ -563,7 +614,7 @@ def test_contract_violation_leaves_latest_untouched(
     latest.write_text('{"date": "2026-08-19"}', encoding="utf-8")
 
     broken = base_data()
-    del broken["summary"]
+    del broken["candidates"]
     src = tmp_path / "2026-08-20_evening.json"
     src.write_text(json.dumps(broken, ensure_ascii=False), encoding="utf-8")
 

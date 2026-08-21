@@ -71,8 +71,9 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   決算注記・保有の鮮度・警告の意味はここに集約する (スキル側に写経しない)
   → [ADR-0018](docs/adr/0018-bundle-skills-in-repo.md)
 - `docs/report-contract.schema.json` — **中間表現JSONの構造の正**。型・必須・語彙は
-  JSON Schemaで検証し、業務上の組み合わせは`lib/contract.py`で検証する
-  → [ADR-0021](docs/adr/0021-json-schema-for-report-contract.md)
+  JSON Schemaで検証し、業務上の組み合わせとseverityは`lib/contract.py`で検証する
+  → [ADR-0021](docs/adr/0021-json-schema-for-report-contract.md) /
+  [ADR-0027](docs/adr/0027-contract-validation-severity.md)
 - `docs/report-contract.md` — **中間表現の意味・組み合わせ規則・判断ラベル定義の正**。
   判断と機械データの境界をここで定義する
   → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
