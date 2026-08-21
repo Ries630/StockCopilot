@@ -33,7 +33,8 @@ description: 株式現物 (日本株・米国株・ETF) の保有分析。保有
 - `analyze.py` — 保有取得 + 日足/週足の指標計算 (STEP 1)
 - `docs/output-contract.md` — **出力の読み方の正**。決算注記・保有の鮮度・警告の意味、
   および**実行モードごとの外部参照の可否**はすべてここ
-- `docs/report-contract.md` — **中間表現の書式と判断ラベル定義の正**
+- `docs/report-contract.schema.json` — **中間表現の構造の正**
+- `docs/report-contract.md` — **中間表現の意味と判断ラベル定義の正**
 - `reports/latest.json` — **前回の中間表現**。シリーズ分析の起点 (STEP 2)
 - `journal/journal.md` — 執行の台帳 + 運用メモ (追記専用。無ければ新規作成)
 - `journal/README.md` — **執行の書式と、運用メモに何を書くかの正**
@@ -61,7 +62,7 @@ uv run analyze.py 9999 AAPL # 銘柄指定
 
 ### STEP 2. 前回の中間表現と執行記録の読み込み
 
-`reports/latest.json` から、銘柄ごとの**前回の結論 (`verdict`)・キーレベル (`levels`)・シナリオ (`scenario` / `prose`)** を把握する。書式は `docs/report-contract.md`。
+`reports/latest.json` から、銘柄ごとの**前回の結論 (`verdict`)・キーレベル (`levels`)・シナリオ (`scenario` / `prose`)** を把握する。構造は `docs/report-contract.schema.json`、意味は `docs/report-contract.md` を見る。
 
 - **無ければ `journal/journal.md` の最終エントリを読む** (2026-08-20 までのエントリは定型の分析を含む)。それも無ければ初回として扱う
 - この fallback は移行期のためのもので、JSON が溜まったら消す → `docs/adr/0025-journal-as-ledger-and-memo.md`

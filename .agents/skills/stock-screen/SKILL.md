@@ -40,7 +40,8 @@ description: 株式現物 (日本株・米国株・ETF) の候補スクリーニ
 - `analyze.py` — 候補のテクニカル分析 (STEP 4)。`stock-check` と共有
 - `docs/output-contract.md` — **出力の読み方の正**。score・通過理由・決算注記・警告の意味、
   および**実行モードごとの外部参照の可否**はすべてここ
-- `docs/report-contract.md` — **中間表現の書式と判断ラベル定義の正**
+- `docs/report-contract.schema.json` — **中間表現の構造の正**
+- `docs/report-contract.md` — **中間表現の意味と判断ラベル定義の正**
 - `reports/latest.json` — 前回の中間表現 (前回候補の顛末を追う起点)
 - `config/watchlist.py` — ウォッチリスト (保有検討中)。追跡対象外。無ければ空リスト扱い
 - `config/watchlist.example.py` — その雛形
