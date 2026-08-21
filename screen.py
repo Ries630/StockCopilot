@@ -274,6 +274,8 @@ def json_candidate(row: dict) -> dict:
     if turnover is not None:
         symbol = "¥" if currency == "JPY" else "$"
         result["turnover"] = f"{symbol}{turnover:,.0f}"
+    if row.get("name"):
+        result["name"] = row["name"]
     if row.get("earnings_note"):
         note = row["earnings_note"]
         result["earnings"] = {"note": note, "warn": note.startswith("⚠")}
