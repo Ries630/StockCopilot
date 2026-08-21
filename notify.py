@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = []
+# dependencies = ["jsonschema>=4.25"]
 # ///
 """中間表現 JSON を読み、夕方ブリーフの結果を Slack へ投稿する。
 
@@ -36,7 +36,9 @@ ENV_PATH = pathlib.Path(__file__).parent / ".env"
 
 WEEKDAY_JA = ("月", "火", "水", "木", "金", "土", "日")
 
-# Slack Block Kit の 1 ブロックあたりの文字数上限は 3000。総括はそれより手前で切る
+# Slack の section と context に収まるよう、投稿する全テキストをここで上限化する
+SECTION_TEXT_LIMIT = 3000
+CONTEXT_TEXT_LIMIT = 2000
 SUMMARY_LIMIT = 1200
 
 
@@ -101,6 +103,78 @@ def verdict_tally(items: list, key: str = "verdict") -> str:
     return " / ".join(f"{label} {n}" for label, n in counts.items())
 
 
+def escape_mrkdwn(value: object) -> str:
+    """動的値を Slack の mrkdwn として安全な文字列へ変換する。
+
+    `<@...>` や `<!channel>` を含む分析文が、メンションのゲートを迂回しないようにする。
+    Slack が特別に解釈する `&`、`<`、`>` だけをエスケープし、静的に書いた強調記法は
+    呼び出し側に残す。
+
+    Args:
+        value: 中間表現または設定から来た動的な値。
+
+    Returns:
+        Slack の特殊構文として解釈されない文字列。
+    """
+    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def truncate_text(text: str, limit: int) -> str:
+    """文字数上限を超えるテキストを省略記号付きで切り詰める。
+
+    Args:
+        text: 切り詰める文字列。
+        limit: 切り詰め後に許容する最大文字数。
+
+    Returns:
+        最大 `limit` 文字の文字列。
+    """
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def bounded_lines(lines: list[str], limit: int = SECTION_TEXT_LIMIT) -> str:
+    """複数行を Slack の文字数上限内に収める。
+
+    行を途中まで残せる場合は、残りの行数を明示して通知全体の失敗を防ぐ。先頭行そのものが
+    長すぎる場合も、その行を切り詰めてから残件数を付ける。
+
+    Args:
+        lines: 連結する行。各行は mrkdwn として安全化済みとする。
+        limit: 連結後に許容する最大文字数。
+
+    Returns:
+        最大 `limit` 文字の改行区切り文字列。
+    """
+    text = "\n".join(lines)
+    if len(text) <= limit:
+        return text
+
+    kept: list[str] = []
+    for index, line in enumerate(lines):
+        candidate = [*kept, line]
+        remaining = len(lines) - index - 1
+        marker = f"…他 {remaining} 行を省略"
+        candidate_text = "\n".join(candidate)
+        if not remaining:
+            if len(candidate_text) <= limit:
+                return candidate_text
+        elif len(candidate_text) + 1 + len(marker) <= limit:
+            kept = candidate
+            continue
+
+        if not kept:
+            # 先頭の 1 行だけで上限を超える場合も、必ず上限内のブロックを返す。
+            kept.append(truncate_text(line, limit - len(marker) - 1))
+            remaining_marker = marker if remaining else "…一部を省略"
+            return "\n".join([*kept, remaining_marker])
+
+        return "\n".join([*kept, f"…他 {len(lines) - index} 行を省略"])
+
+    return text
+
+
 def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list, bool]:
     """投稿する本文と Block Kit を組み立てる。
 
@@ -112,7 +186,7 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
     Returns:
         `(fallback テキスト, blocks, メンションしたか)` のタプル。
     """
-    date = data.get("date", "")
+    date = str(data.get("date", ""))
     weekday = ""
     try:
         year, month, day = (int(x) for x in date.split("-"))
@@ -127,49 +201,73 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
     lines = []
     if mentioned:
         lines.append(f"<@{user_id}>")
-    lines.append(f"🌆 *StockCopilot Evening Brief* — {date}{weekday} {clock} JST")
+    title = (
+        f"🌆 *StockCopilot Evening Brief* — {escape_mrkdwn(date)}{weekday} "
+        f"{escape_mrkdwn(clock)} JST"
+    )
+    lines.append(title)
 
     if items:
         lines.append(f"🎯 *資金が動く判断 {len(items)} 件*")
-        for i in items:
-            kind = "保有" if i["kind"] == "holding" else "候補"
-            lines.append(f"　*{i['verdict']}* `{i['ticker']}` {i['name']} ({kind})")
     else:
         lines.append("🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)")
 
     holdings = data.get("holdings") or []
     candidates = data.get("candidates") or []
-    lines.append(f"📦 保有 {len(holdings)} 銘柄: {verdict_tally(holdings) or '—'}")
+    lines.append(f"📦 保有 {len(holdings)} 銘柄: {escape_mrkdwn(verdict_tally(holdings) or '—')}")
     if candidates:
-        lines.append(f"🔍 候補 {len(candidates)} 件: {verdict_tally(candidates)}")
+        lines.append(f"🔍 候補 {len(candidates)} 件: {escape_mrkdwn(verdict_tally(candidates))}")
     else:
         screen = data.get("screen") or {}
-        lines.append(f"🔍 候補なし (母集団 {screen.get('universe', '?')} 銘柄)")
+        lines.append(f"🔍 候補なし (母集団 {escape_mrkdwn(screen.get('universe', '?'))} 銘柄)")
 
     if data.get("stale_bars"):
         lines.append("🕘 確定足は前回から変わらず (独立した観測として数えない)")
 
-    for warning in data.get("warnings") or []:
-        lines.append(f"⚠️ {warning}")
+    action_lines = []
+    for item in items:
+        kind = "保有" if item["kind"] == "holding" else "候補"
+        name = escape_mrkdwn(item.get("name", ""))
+        name_part = f" {name}" if name else ""
+        action_lines.append(
+            f"　*{escape_mrkdwn(item['verdict'])}* "
+            f"`{escape_mrkdwn(item['ticker'])}`{name_part} ({kind})"
+        )
 
-    summary = str(data.get("summary") or "")
-    if len(summary) > SUMMARY_LIMIT:
-        summary = summary[:SUMMARY_LIMIT] + "…"
+    warning_lines = [f"⚠️ {escape_mrkdwn(warning)}" for warning in data.get("warnings") or []]
+
+    summary = truncate_text(escape_mrkdwn(data.get("summary") or ""), SUMMARY_LIMIT)
 
     blocks = [
-        {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": bounded_lines(lines)}},
     ]
+    if action_lines:
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": bounded_lines(action_lines)}}
+        )
+    if warning_lines:
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": bounded_lines(warning_lines)}}
+        )
     if summary:
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": summary}})
     blocks.append(
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": f"📄 `{report_path}`（ブラウザで開く）"}],
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": truncate_text(
+                        f"📄 ローカルレポート: `{escape_mrkdwn(report_path)}`（この端末で開く）",
+                        CONTEXT_TEXT_LIMIT,
+                    ),
+                }
+            ],
         }
     )
 
     # fallback テキストはモバイルの通知プレビューに出る。メンションもここに含める
-    fallback = "\n".join(lines[: 3 if items else 2])
+    fallback = bounded_lines(lines[: 3 if items else 2])
     return fallback, blocks, mentioned
 
 

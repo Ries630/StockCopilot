@@ -182,9 +182,50 @@ def test_warnings_and_stale_bars_are_included() -> None:
     assert "取得に失敗した銘柄が 1 件" in body
 
 
-def test_report_path_is_shown() -> None:
+def test_dynamic_mrkdwn_is_escaped_except_for_the_controlled_mention() -> None:
+    """分析文に含まれるメンション記法で通知条件を迂回させない。"""
+    data = base_data(
+        candidates=[candidate(ticker="<@U999>", name="<!channel>")],
+        summary="<@U888> & <https://example.test>",
+        warnings=["<!here> & <@U777>"],
+    )
+    fallback, blocks, mentioned = notify.build_message(data, "reports/<x>.html", "U123")
+    body = text_of({"blocks": blocks})
+
+    assert mentioned
+    assert "<@U123>" in fallback
+    for value in ("<@U999>", "<!channel>", "<@U888>", "<!here>", "<@U777>"):
+        assert value not in body
+    assert "&lt;@U999&gt;" in body
+    assert "&amp;" in body
+
+
+def test_every_block_stays_within_slack_text_limits() -> None:
+    """契約に件数・文字数上限がなくても通知全体を失敗させない。"""
+    data = base_data(
+        holdings=[position(ticker=f"H{index}", name="名" * 500, verdict="売却") for index in range(20)],
+        candidates=[candidate(ticker=f"C{index}", name="名" * 500) for index in range(20)],
+        warnings=["警告" * 1000 for _ in range(20)],
+        summary="総括" * 2000,
+    )
+    _, blocks, _ = notify.build_message(data, "reports/" + "x" * 3000, "U123")
+
+    assert len(blocks) <= 5
+    for block in blocks:
+        if block["type"] == "section":
+            assert len(block["text"]["text"]) <= notify.SECTION_TEXT_LIMIT
+        if block["type"] == "context":
+            assert len(block["elements"][0]["text"]) <= notify.CONTEXT_TEXT_LIMIT
+    assert "…他" in text_of({"blocks": blocks})
+
+
+def test_report_path_is_explicitly_local() -> None:
+    """ローカルファイルは Slack から直接開ける URL ではないと明示する。"""
     _, blocks, _ = notify.build_message(base_data(), "reports/2026-08-20_evening.html", "")
-    assert "reports/2026-08-20_evening.html" in text_of({"blocks": blocks})
+    body = text_of({"blocks": blocks})
+    assert "ローカルレポート" in body
+    assert "この端末で開く" in body
+    assert "reports/2026-08-20_evening.html" in body
 
 
 def test_long_summary_is_truncated() -> None:
@@ -193,6 +234,12 @@ def test_long_summary_is_truncated() -> None:
     body = text_of({"blocks": blocks})
     assert "…" in body
     assert len(body) < 3000
+
+
+def test_notify_script_declares_contract_dependency() -> None:
+    """単体起動用の PEP 723 依存に jsonschema を含める。"""
+    source = pathlib.Path(notify.__file__).read_text(encoding="utf-8")
+    assert 'dependencies = ["jsonschema>=4.25"]' in source
 
 
 def test_weekday_is_derived_from_date() -> None:
