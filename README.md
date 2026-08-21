@@ -51,7 +51,7 @@ flowchart LR
 - **夕方ブリーフは中間表現 JSON を挟む。** HTML レポートと Slack 通知はどちらもそれだけを
   入力にし、**通知でメンションを鳴らす条件を LLM の裁量から外している**
   ([ADR-0020](docs/adr/0020-intermediate-report-json.md) /
-  [ADR-0021](docs/adr/0021-slack-webhook-notification.md))
+  [ADR-0022](docs/adr/0022-slack-webhook-notification.md))
 
 `config/watchlist.py` と `journal/journal.md` は追跡対象外
 ([ADR-0008](docs/adr/0008-no-holdings-in-repo.md))。
@@ -73,7 +73,8 @@ flowchart LR
 | 母集団を 3 層にし、ウォッチリストは追跡対象外にする | [0010](docs/adr/0010-three-layer-universe.md) |
 | 通過条件は状態ではなく事象にし、突破幅に下限を置く | [0011](docs/adr/0011-event-based-screen-thresholds.md) |
 | 夕方ブリーフの出力に中間表現 JSON を挟む | [0020](docs/adr/0020-intermediate-report-json.md) |
-| Slack 通知をスクリプトの Incoming Webhook に移す | [0021](docs/adr/0021-slack-webhook-notification.md) |
+| 中間表現の構造をJSON Schema、組み合わせ規則をPythonで検証する | [0021](docs/adr/0021-json-schema-for-report-contract.md) |
+| Slack 通知をスクリプトの Incoming Webhook に移す | [0022](docs/adr/0022-slack-webhook-notification.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 
@@ -144,7 +145,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env` して埋める)。�
 | `analyze.py` | 保有・指定銘柄のテクニカル分析 |
 | `report.py` | 中間表現 JSON → 自己完結 HTML。外部リソースを読み込まない |
 | `notify.py` | 中間表現 JSON → Slack (Incoming Webhook) |
-| `docs/report-contract.md` | 中間表現の書式仕様 |
+| `docs/report-contract.schema.json` | 中間表現のキー・型・必須・語彙の正 |
+| `docs/report-contract.md` | 中間表現の意味・組み合わせ規則の正 |
 | `.env.example` | Slack 資格情報の雛形 (本体 `.env` は追跡対象外) |
 | `journal/README.md` | 分析ジャーナルの書式仕様 (本体は追跡対象外) |
 | `tests/` | テスト (ネットワークアクセスなし) |
@@ -192,7 +194,8 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 スキルなしでも上記のコマンドとして単体で動作する。
 
 出力をどう読むかの正は [`docs/output-contract.md`](docs/output-contract.md)、
-中間表現の書式の正は [`docs/report-contract.md`](docs/report-contract.md)、
+中間表現の構造の正は [`docs/report-contract.schema.json`](docs/report-contract.schema.json)、
+意味の正は [`docs/report-contract.md`](docs/report-contract.md)、
 ジャーナルの書式と判断ラベルの正は [`journal/README.md`](journal/README.md) にあり、
 スキルはそこへリンクするだけにしている。運用して分かった教訓は追跡対象外の
 `journal/lessons.md` に置く (実際の保有についての観測を含むため)。

@@ -19,7 +19,7 @@ description: 株式現物の夕方ブリーフ。保有分析 (stock-check) と�
   「何を前提に置いたか」を出力と JSON の `assumptions` に明記して進める
 - **発注しない。** 分析と提案のみ
 - **LLM は Slack ツールを呼ばない。** 投稿は STEP 5 の `notify.py` が完結させる
-  (→ [`docs/adr/0021-slack-webhook-notification.md`](../../../docs/adr/0021-slack-webhook-notification.md))
+  (→ [`docs/adr/0022-slack-webhook-notification.md`](../../../docs/adr/0022-slack-webhook-notification.md))
 - **保有情報をリポジトリに書かない。** 書いてよいのは `.gitignore` 済みの
   `journal/journal.md` `journal/lessons.md` `reports/` `config/watchlist.py` だけ
   (→ [`docs/adr/0008-no-holdings-in-repo.md`](../../../docs/adr/0008-no-holdings-in-repo.md))
@@ -60,8 +60,10 @@ STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォー�
 
 STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
 
-**書式の正は [`docs/report-contract.md`](../../../docs/report-contract.md)。**
-このファイルに写経しないこと (二重管理になり、必ずどちらかが先に古くなる)。
+**キー・型・必須・語彙の正は
+[`docs/report-contract.schema.json`](../../../docs/report-contract.schema.json)、意味と組み合わせの正は
+[`docs/report-contract.md`](../../../docs/report-contract.md)。** このファイルに写経しないこと
+(二重管理になり、必ずどちらかが先に古くなる)。
 
 書くときの要点だけ挙げる:
 
