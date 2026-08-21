@@ -69,9 +69,10 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 - `ticker`は生ティッカー。空白だけの値では対象を特定できない
 - `name`は任意。JP/USどちらも同じ扱いで、取得できない場合は省略する
-- `shares`は実効保有株数、`price`は確定足終値、`change_pct`は前回エントリ比
+- `shares`は実効保有株数、`price`は確定足終値で、指定する場合はいずれも正値。
+  `change_pct`は前回エントリ比なので負値を取り得る
 - `scenario`は前進・停滞・否定接近のいずれか
-- `levels`は支持・抵抗・無効化水準、`closes`は古い順の終値
+- `levels`は支持・抵抗・無効化水準、`closes`は古い順の終値。価格水準はすべて正値
 - `earnings`は決算注記。決算情報が無い場合はオブジェクトごと省略する
 - `prose.change`と`prose.scenario`は、HTML単独で判断を再構成するための本文
 
@@ -81,8 +82,9 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 ## 候補（Candidate）の意味
 
-- `market`は候補を抽出した市場、`currency`は表示通貨
-- `score_atr`と`pass_reason`は`screen.py`が返した値を移す
+- `market`は候補を抽出した市場、`currency`は表示通貨。JPはJPY、USはUSDに対応する
+- `price`と価格水準は正値。`score_atr`と`atr_pct`は0以上で、`screen.py`が返した値を移す
+- `pass_reason`は`screen.py`が返した値を移す
 - `range`は直前20日レンジの安値・高値と、その中での終値位置。終値位置はレンジ外なら
   0〜100%を超えてよい。`pos_pct`は`screen.py --json`が元の比率を100倍して出力し、
   `price`・`low`・`high`から求めた値と0.5ポイント以内で一致する必要がある

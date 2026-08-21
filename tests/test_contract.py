@@ -353,6 +353,25 @@ def test_candidate_market_must_match_a_single_market_screen() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("market", "currency"),
+    [("jp", "USD"), ("us", "JPY")],
+)
+def test_candidate_currency_must_match_market(market: str, currency: str) -> None:
+    """候補の市場と表示通貨の矛盾を拒否する。"""
+    with pytest.raises(ValueError, match="currency|JPY|USD"):
+        validate(base_data(candidates=[candidate(market=market, currency=currency)]))
+
+
+@pytest.mark.parametrize(
+    ("market", "currency"),
+    [("jp", "JPY"), ("us", "USD")],
+)
+def test_candidate_currency_accepts_market_pair(market: str, currency: str) -> None:
+    """候補の正しい市場・表示通貨の組み合わせを受理する。"""
+    validate(base_data(candidates=[candidate(market=market, currency=currency)]))
+
+
 def test_candidate_position_percent_must_match_price_and_range() -> None:
     cand = candidate()
     cand["range"]["pos_pct"] = 1.1725
@@ -383,3 +402,36 @@ def test_numeric_boundaries_and_booleans(path: tuple, value) -> None:
     set_path(data, path, value)
     with pytest.raises(ValueError, match="契約外"):
         validate(data)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("holdings", 0, "shares"), 0),
+        (("holdings", 0, "price"), 0),
+        (("holdings", 0, "levels", "support"), -1),
+        (("holdings", 0, "closes", 0), 0),
+        (("candidates", 0, "price"), 0),
+        (("candidates", 0, "score_atr"), -0.1),
+        (("candidates", 0, "range", "low"), 0),
+        (("candidates", 0, "range", "high"), -1),
+        (("candidates", 0, "atr_pct"), -0.1),
+        (("candidates", 0, "levels", "resistance"), 0),
+        (("candidates", 0, "closes", 0), -1),
+    ],
+)
+def test_price_values_are_positive_and_atr_values_are_nonnegative(
+    path: tuple, value: float
+) -> None:
+    """価格系の非正値とATR系の負値を拒否する。"""
+    data = full_data()
+    set_path(data, path, value)
+    with pytest.raises(ValueError, match="契約外"):
+        validate(data)
+
+
+def test_zero_atr_values_and_negative_range_position_are_valid() -> None:
+    """ATRのゼロとレンジ下抜けを過剰に拒否しない。"""
+    cand = candidate(score_atr=0, atr_pct=0, price=90)
+    cand["range"] = {"low": 100, "high": 120, "pos_pct": -50}
+    validate(base_data(candidates=[cand]))

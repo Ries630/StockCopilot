@@ -29,6 +29,8 @@
   },
   "$defs": {
     "nonEmptyString": { "type": "string", "pattern": "\\S" },
+    "positiveNumber": { "type": "number", "exclusiveMinimum": 0 },
+    "nonNegativeNumber": { "type": "number", "minimum": 0 },
     "stringList": {
       "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" }
     },
@@ -104,16 +106,16 @@
     "positionLevels": {
       "type": "object", "additionalProperties": false,
       "properties": {
-        "support": { "type": "number" },
-        "resistance": { "type": "number" },
-        "invalidation": { "type": "number" }
+        "support": { "$ref": "#/$defs/positiveNumber" },
+        "resistance": { "$ref": "#/$defs/positiveNumber" },
+        "invalidation": { "$ref": "#/$defs/positiveNumber" }
       }
     },
     "candidateLevels": {
       "type": "object", "additionalProperties": false,
       "properties": {
-        "support": { "type": "number" },
-        "resistance": { "type": "number" }
+        "support": { "$ref": "#/$defs/positiveNumber" },
+        "resistance": { "$ref": "#/$defs/positiveNumber" }
       }
     },
     "earnings": {
@@ -140,15 +142,17 @@
       "properties": {
         "ticker": { "$ref": "#/$defs/nonEmptyString" },
         "name": { "$ref": "#/$defs/nonEmptyString" },
-        "shares": { "type": "number" },
+        "shares": { "$ref": "#/$defs/positiveNumber" },
         "currency": { "enum": ["JPY", "USD"] },
-        "price": { "type": "number" },
+        "price": { "$ref": "#/$defs/positiveNumber" },
         "change_pct": { "type": "number" },
         "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留", "—"] },
         "scenario": { "enum": ["前進", "停滞", "否定接近"] },
         "signals": { "$ref": "#/$defs/signals" },
         "levels": { "$ref": "#/$defs/positionLevels" },
-        "closes": { "type": "array", "items": { "type": "number" } },
+        "closes": {
+          "type": "array", "items": { "$ref": "#/$defs/positiveNumber" }
+        },
         "earnings": { "$ref": "#/$defs/earnings" },
         "reference_only": { "type": "boolean" },
         "prose": { "$ref": "#/$defs/positionProse" }
@@ -171,8 +175,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["low", "high", "pos_pct"],
       "properties": {
-        "low": { "type": "number" },
-        "high": { "type": "number" },
+        "low": { "$ref": "#/$defs/positiveNumber" },
+        "high": { "$ref": "#/$defs/positiveNumber" },
         "pos_pct": { "type": "number" }
       }
     },
@@ -196,39 +200,48 @@
         "name": { "$ref": "#/$defs/nonEmptyString" },
         "market": { "enum": ["jp", "us"] },
         "currency": { "enum": ["JPY", "USD"] },
-        "price": { "type": "number" },
+        "price": { "$ref": "#/$defs/positiveNumber" },
         "change_pct": { "type": "number" },
-        "score_atr": { "type": "number" },
+        "score_atr": { "$ref": "#/$defs/nonNegativeNumber" },
         "pass_reason": { "$ref": "#/$defs/nonEmptyString" },
         "range": { "$ref": "#/$defs/candidateRange" },
-        "atr_pct": { "type": "number" },
+        "atr_pct": { "$ref": "#/$defs/nonNegativeNumber" },
         "turnover": { "$ref": "#/$defs/nonEmptyString" },
         "earnings": { "$ref": "#/$defs/earnings" },
         "verdict": { "enum": ["買い", "見送り", "決算後に再判定", "保留"] },
         "signals": { "$ref": "#/$defs/signals" },
         "levels": { "$ref": "#/$defs/candidateLevels" },
-        "closes": { "type": "array", "items": { "type": "number" } },
+        "closes": {
+          "type": "array", "items": { "$ref": "#/$defs/positiveNumber" }
+        },
         "prose": { "$ref": "#/$defs/candidateProse" }
       },
-      "allOf": [{
-        "if": {
-          "required": ["verdict"],
-          "properties": { "verdict": { "const": "買い" } }
-        },
-        "then": {
-          "properties": {
-            "prose": {
-              "required": ["weak"],
-              "properties": {
-                "weak": {
-                  "type": "array", "minItems": 1,
-                  "items": { "$ref": "#/$defs/nonEmptyString" }
+      "allOf": [
+        {
+          "if": {
+            "required": ["verdict"],
+            "properties": { "verdict": { "const": "買い" } }
+          },
+          "then": {
+            "properties": {
+              "prose": {
+                "required": ["weak"],
+                "properties": {
+                  "weak": {
+                    "type": "array", "minItems": 1,
+                    "items": { "$ref": "#/$defs/nonEmptyString" }
+                  }
                 }
               }
             }
           }
+        },
+        {
+          "if": { "properties": { "market": { "const": "jp" } } },
+          "then": { "properties": { "currency": { "const": "JPY" } } },
+          "else": { "properties": { "currency": { "const": "USD" } } }
         }
-      }]
+      ]
     }
   }
 }

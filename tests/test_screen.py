@@ -250,6 +250,8 @@ def test_json_candidate_uses_report_keys_and_percent_units() -> None:
 
     result = screen.json_candidate(row)
 
+    assert result["market"] == "us"
+    assert result["currency"] == "USD"
     assert result["price"] == 121.0
     assert result["score_atr"] == 1.2
     assert result["pass_reason"] == "20日レンジを上に突破"
@@ -295,4 +297,6 @@ def test_json_output_is_machine_readable_and_counts_failures(
     assert parsed["market"] == "jp"
     assert parsed["failures"] == 1
     assert parsed["failure_details"] == [{"ticker": "FAIL", "message": "取得できない"}]
+    assert parsed["candidates"][0]["market"] == "jp"
+    assert parsed["candidates"][0]["currency"] == "JPY"
     assert parsed["candidates"][0]["range"]["pos_pct"] == 50.0
