@@ -180,11 +180,23 @@ HTMLのヒーローと後続のSlackメンションは同じ判定だけを見�
 
 `lib/contract.py`の`validate()`を、JSONを利用する前に必ず1回呼ぶ。
 
-- 必須キー欠落は`KeyError`
-- 型・語彙・形式・空・未知キー・組み合わせ違反は`ValueError`
-- 任意項目は省略できるが、`null`で代用しない
-- 契約にない追加キーは、表記揺れや未描画データを見逃さないため拒否する
-- 候補レンジで`low > high`は意味上の矛盾として拒否する
+severityは次の2段階（→ [ADR-0027](adr/0027-contract-validation-severity.md)）。
 
-既定値で埋めて進むと、「判断が無かった日」と「LLMが書き漏らした日」が
-区別できなくなる。生成に失敗させ、入力側を修正する。
+| 段階 | 対象 | 挙動 |
+|---|---|---|
+| 例外 | 判断を成立させる項目の欠落、型・語彙・形式・空・未知キー・組み合わせ違反 | `KeyError` / `ValueError`で停止 |
+| 警告 | 表示項目の欠落 | HTMLとSlackの警告へ載せ、「不明」と表示して続行 |
+
+表示項目として警告へ降格できる欠落は次のとおり。ここに無いSchema違反は例外にする。
+
+- トップレベル: `date`、`generated_at`、`bars`、`holdings_as_of`、`screen`、`summary`
+- `bars.jp` / `bars.us`、`holdings_as_of[].as_of` / `label`
+- `effective_holdings.executions`、`screen.universe` / `market` / `failures`
+- 保有: `prose`、`prose.change` / `scenario`
+- 候補: `score_atr`、`pass_reason`、`range`とその3要素、`prose`、`prose.check`
+
+ただし`verdict: "買い"`で`prose`全体が無い場合は、必須の`weak`も確認できないため例外。
+型や形式が壊れた値、空白文字、`null`は「欠落」へ読み替えず例外のままにする。
+
+警告へ降格した欠落を空文字や0へ置き換えると、正常値と書き漏らしを区別できない。
+`validate()`の警告を既存の`warnings`へ合流し、表示側でも「不明」を残す。

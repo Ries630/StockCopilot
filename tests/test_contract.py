@@ -1,7 +1,7 @@
 """中間表現JSON Schemaと業務上の組み合わせ規則のテスト。
 
-構造の正は`docs/report-contract.schema.json`に置く。必須キーのテストはSchemaの
-`required`を読み、実装と同じ項目一覧をテストへ写経しない。
+構造の正は`docs/report-contract.schema.json`に置く。ここではSchema適用に加え、
+判断項目は例外、表示項目の欠落は警告になる境界を検査する。
 """
 
 import pytest
@@ -60,7 +60,7 @@ def test_schema_itself_is_valid_draft_2020_12() -> None:
 
 def test_valid_document_passes_without_copying() -> None:
     data = full_data()
-    assert validate(data) is data
+    assert validate(data) == []
 
 
 def test_empty_holdings_and_candidates_are_valid() -> None:
@@ -68,31 +68,85 @@ def test_empty_holdings_and_candidates_are_valid() -> None:
     validate(base_data())
 
 
-def test_every_declared_required_key_is_rejected_when_removed() -> None:
-    """各オブジェクトの`required`をSchemaから読み、欠落を機械的に検査する。"""
+def test_decision_required_keys_are_rejected_when_removed() -> None:
+    """判断を成立させるキーの欠落は処理を停止する。"""
     data = full_data()
-    defs = SCHEMA["$defs"]
     cases = (
-        (SCHEMA, data),
-        (defs["bars"], data["bars"]),
-        (defs["holdingAsOf"], data["holdings_as_of"][0]),
-        (defs["effectiveHoldings"], data["effective_holdings"]),
-        (defs["screen"], data["screen"]),
-        (defs["position"], data["holdings"][0]),
-        (defs["positionProse"], data["holdings"][0]["prose"]),
-        (defs["signals"], data["holdings"][0]["signals"]),
-        (defs["candidate"], data["candidates"][0]),
-        (defs["candidateRange"], data["candidates"][0]["range"]),
-        (defs["candidateProse"], data["candidates"][0]["prose"]),
+        (data, "schema"),
+        (data, "effective_holdings"),
+        (data, "holdings"),
+        (data, "candidates"),
+        (data["effective_holdings"], "lines"),
+        (data["holdings"][0], "ticker"),
+        (data["holdings"][0], "signals"),
+        (data["holdings"][0]["signals"], "weekly"),
+        (data["candidates"][0], "market"),
+        (data["candidates"][0], "verdict"),
     )
-    for schema, target in cases:
-        for key in schema["required"]:
-            removed = target.pop(key)
-            try:
-                with pytest.raises(KeyError, match=key):
-                    validate(data)
-            finally:
-                target[key] = removed
+    for target, key in cases:
+        removed = target.pop(key)
+        try:
+            with pytest.raises(KeyError, match=key):
+                validate(data)
+        finally:
+            target[key] = removed
+
+
+def test_display_required_keys_warn_when_removed() -> None:
+    """表示だけに使うキーの欠落は警告へ降格する。"""
+    data = full_data()
+    cases = (
+        (data, "date"),
+        (data, "generated_at"),
+        (data, "bars"),
+        (data, "holdings_as_of"),
+        (data, "screen"),
+        (data, "summary"),
+        (data["effective_holdings"], "executions"),
+        (data["holdings"][0], "prose"),
+        (data["candidates"][0], "score_atr"),
+        (data["candidates"][0], "pass_reason"),
+        (data["candidates"][0], "range"),
+    )
+    for target, key in cases:
+        removed = target.pop(key)
+        try:
+            assert any(key in warning for warning in validate(data))
+        finally:
+            target[key] = removed
+
+
+def test_nested_display_required_keys_warn_when_removed() -> None:
+    """表示オブジェクト内の欠落も位置付きの警告にする。"""
+    data = full_data()
+    cases = (
+        (data["bars"], "jp"),
+        (data["holdings_as_of"][0], "as_of"),
+        (data["screen"], "failures"),
+        (data["holdings"][0]["prose"], "change"),
+        (data["candidates"][0]["range"], "low"),
+        (data["candidates"][0]["prose"], "check"),
+    )
+    for target, key in cases:
+        removed = target.pop(key)
+        try:
+            warnings = validate(data)
+            assert any(key in warning and "不明" in warning for warning in warnings)
+        finally:
+            target[key] = removed
+
+
+def test_empty_holdings_as_of_warns() -> None:
+    warnings = validate(base_data(holdings_as_of=[]))
+    assert any("holdings_as_of" in warning for warning in warnings)
+
+
+def test_buy_candidate_cannot_downgrade_missing_prose() -> None:
+    """弱点確認を含むprose全体の欠落は、買い判断では例外のままにする。"""
+    cand = candidate(verdict="買い")
+    del cand["prose"]
+    with pytest.raises(KeyError, match="prose"):
+        validate(base_data(candidates=[cand]))
 
 
 @pytest.mark.parametrize(

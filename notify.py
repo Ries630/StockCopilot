@@ -35,6 +35,7 @@ from lib.verdicts import actionable_items
 ENV_PATH = pathlib.Path(__file__).parent / ".env"
 
 WEEKDAY_JA = ("月", "火", "水", "木", "金", "土", "日")
+UNKNOWN = "不明"
 
 # Slack の section と context に収まるよう、投稿する全テキストをここで上限化する
 SECTION_TEXT_LIMIT = 3000
@@ -186,14 +187,14 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
     Returns:
         `(fallback テキスト, blocks, メンションしたか)` のタプル。
     """
-    date = str(data.get("date", ""))
+    date = str(data.get("date") or UNKNOWN)
     weekday = ""
     try:
         year, month, day = (int(x) for x in date.split("-"))
         weekday = f" ({WEEKDAY_JA[dt.date(year, month, day).weekday()]})"
     except (ValueError, TypeError):
         pass
-    clock = str(data.get("generated_at", ""))[11:16]
+    clock = str(data.get("generated_at") or "")[11:16] or UNKNOWN
 
     items = actionable_items(data)
     mentioned = bool(items and user_id)
@@ -236,7 +237,7 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
 
     warning_lines = [f"⚠️ {escape_mrkdwn(warning)}" for warning in data.get("warnings") or []]
 
-    summary = truncate_text(escape_mrkdwn(data.get("summary") or ""), SUMMARY_LIMIT)
+    summary = truncate_text(escape_mrkdwn(data.get("summary") or UNKNOWN), SUMMARY_LIMIT)
 
     blocks = [
         {"type": "section", "text": {"type": "mrkdwn", "text": bounded_lines(lines)}},
@@ -365,7 +366,9 @@ def main() -> None:
     src = pathlib.Path(args.source)
     # 単体で走らせたときも契約を検証する。壊れた中間表現から Slack へ投稿すると、
     # 誤った内容が push まで届いてしまう (通常は report.py が先に落ちる)
-    data = validate(json.loads(src.read_text(encoding="utf-8")))
+    data = json.loads(src.read_text(encoding="utf-8"))
+    # 判断に関わる違反はここで落ちる。表示項目の欠落はSlack本文へ混ぜる
+    data["warnings"] = list(data.get("warnings") or []) + validate(data)
     report_path = args.report or str(src.with_suffix(".html"))
     print(f"[Slack] {notify(data, report_path, dry_run=args.dry_run)}")
 

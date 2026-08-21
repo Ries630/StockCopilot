@@ -94,6 +94,8 @@ ADR の役目。
 | [0023](0023-japanese-stock-display-names.md) | 日本株の表示名は手書きの辞書を正にし、yfinanceを落ち先にする | 承認済み |
 | [0024](0024-glossary-popovers.md) | 用語の説明は本文ではなくポップオーバーに置く | 承認済み |
 | [0025](0025-journal-as-ledger-and-memo.md) | ジャーナルの役割を「執行台帳 + 運用メモ」に絞る | 廃止（ADR-0028 により置換） |
+| [0026](0026-centralised-contract-validation.md) | 中間表現の検証を集約し、severityを2段階にする | 廃止（ADR-0027により置換） |
+| [0027](0027-contract-validation-severity.md) | JSON Schema検証に表示欠落のseverityを重ねる | 承認済み |
 | [0028](0028-standalone-analysis-journal-history.md) | 単体分析はジャーナルに履歴を残す | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）

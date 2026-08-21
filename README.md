@@ -81,6 +81,7 @@ flowchart LR
 | 日本株の名前は手書きの辞書を正にし、yfinance を落ち先にする | [0023](docs/adr/0023-japanese-stock-display-names.md) |
 | 用語の説明は本文ではなくポップオーバーに置く | [0024](docs/adr/0024-glossary-popovers.md) |
 | 単体分析はジャーナルに履歴を残す | [0028](docs/adr/0028-standalone-analysis-journal-history.md) |
+| 判断違反は停止し、表示欠落は警告と「不明」で継続する | [0027](docs/adr/0027-contract-validation-severity.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 

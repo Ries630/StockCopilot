@@ -29,7 +29,7 @@ import html
 import json
 import pathlib
 
-from lib.contract import validate
+from lib.contract import BAR_MARKETS, validate
 from lib.verdicts import NOT_APPLICABLE, actionable_items
 
 # 4 軸シグナルの評価 → 配色と表示ラベル。
@@ -41,6 +41,9 @@ SIGNAL_STYLE = {
     "bad": ("var(--bad)", "悪"),
     "unknown": ("var(--muted)", "?"),
 }
+
+# 表示項目が欠けたとき、空欄や既定値にせず劣化を明示する
+UNKNOWN = "不明"
 
 # シグナルの軸名 → 見出し。順序が表示順になる
 SIGNAL_AXES = (
@@ -471,10 +474,13 @@ def range_axis(rng: dict, price, currency: str) -> str:
         currency: 通貨コード。
 
     Returns:
-        HTML の断片。材料が無ければ空文字。
+        HTML の断片。材料が無ければ「不明」の表示。
     """
     if not rng or rng.get("low") is None or rng.get("high") is None:
-        return ""
+        return (
+            f'<div class="legend"><span>{term("range20", "20日レンジ")}</span>'
+            f"<span>{UNKNOWN}</span></div>"
+        )
     lo, hi = float(rng["low"]), float(rng["high"])
     span = (hi - lo) or 1.0
     pct = rng.get("pos_pct")
@@ -496,26 +502,32 @@ def range_axis(rng: dict, price, currency: str) -> str:
     )
 
 
-def score_bar(score: float) -> str:
+def score_bar(score: float | None) -> str:
     """score (ATR 単位) を横バーにする。
 
     3.0 ATR で満杯にする。score は上限が無いが、実運用で 3 を超える候補は稀で、
     それ以上を線形に伸ばすと日々の差が潰れて見えなくなる。
 
     Args:
-        score: `screen.py` の score。
+        score: `screen.py` の score。Noneなら不明表示にする。
 
     Returns:
         HTML の断片。
     """
-    pct = max(0.0, min(100.0, float(score) / 3.0 * 100))
+    if score is None:
+        return (
+            f'<div class="legend"><span>{term("score", "score")}</span>'
+            f"<span>{UNKNOWN}</span></div>"
+        )
+    numeric = float(score)
+    pct = max(0.0, min(100.0, numeric / 3.0 * 100))
     return (
         f'<div style="margin:10px 0 2px"><div style="height:6px;border-radius:3px;'
         f'background:var(--panel2);overflow:hidden">'
         f'<div style="height:100%;width:{pct:.0f}%;background:var(--accent)"></div></div>'
         f'<div class="legend" style="display:flex;justify-content:space-between;'
         f'color:var(--muted);font-size:11px"><span>{term("score", "score")}</span>'
-        f'<span class="num">{score:.1f} ATR</span></div></div>'
+        f'<span class="num">{numeric:.1f} ATR</span></div></div>'
     )
 
 
@@ -609,7 +621,7 @@ def position_card(pos: dict) -> str:
     currency = pos["currency"]
     name = pos.get("name") or ""
     price = require(pos, "price", where)
-    prose = require(pos, "prose", where)
+    prose = pos.get("prose") or {}
     # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
     # 既定値に潰すと、書き漏らした「売却」が「判断なし」として表示され、
     # ヒーローからも actionable_items() からも消える
@@ -644,8 +656,8 @@ def position_card(pos: dict) -> str:
         f"{level_axis(price, pos.get('levels') or {}, currency)}"
         f"{earnings_chip(pos.get('earnings'))}"
         f'<div class="prose">'
-        f'<div class="k">前回からの変化</div><p>{esc(prose.get("change"))}</p>'
-        f'<div class="k">シナリオ進捗</div><p>{esc(prose.get("scenario"))}</p>'
+        f'<div class="k">前回からの変化</div><p>{esc(prose.get("change") or UNKNOWN)}</p>'
+        f'<div class="k">シナリオ進捗</div><p>{esc(prose.get("scenario") or UNKNOWN)}</p>'
         f"{reasons}{trigger}</div></div>"
     )
 
@@ -664,7 +676,7 @@ def candidate_card(cand: dict) -> str:
     currency = cand["currency"]
     name = cand.get("name") or ""
     price = require(cand, "price", where)
-    prose = require(cand, "prose", where)
+    prose = cand.get("prose") or {}
     verdict = cand["verdict"]
 
     strong = ""
@@ -675,9 +687,7 @@ def candidate_card(cand: dict) -> str:
     if prose.get("weak"):
         lis = "".join(f"<li>{esc(w)}</li>" for w in prose["weak"])
         weak = f'<div class="k">弱い点</div><ul>{lis}</ul>'
-    check = ""
-    if prose.get("check"):
-        check = f'<div class="trigger">確認点: {esc(prose["check"])}</div>'
+    check = f'<div class="trigger">確認点: {esc(prose.get("check") or UNKNOWN)}</div>'
 
     parts = []
     if cand.get("atr_pct") is not None:
@@ -689,15 +699,15 @@ def candidate_card(cand: dict) -> str:
     return (
         f'<div class="card"><div class="top"><div>'
         f'<h3>{esc(ticker)} {esc(name)}</h3>'
-        f'<div class="sub">{esc(require(cand, "pass_reason", where))}</div></div>'
+        f'<div class="sub">{esc(cand.get("pass_reason") or UNKNOWN)}</div></div>'
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(cand.get("change_pct"))}</span></div>'
         f'<div class="sub num" style="margin-top:2px">{meta}</div>'
-        f"{score_bar(float(require(cand, 'score_atr', where)))}"
+        f"{score_bar(cand.get('score_atr'))}"
         f"{signal_bars(cand['signals'])}"
         f"{sparkline(cand.get('closes') or [])}"
-        f"{range_axis(require(cand, 'range', where), price, currency)}"
+        f"{range_axis(cand.get('range') or {}, price, currency)}"
         f"{level_axis(price, cand.get('levels') or {}, currency)}"
         f"{earnings_chip(cand.get('earnings'))}"
         f'<div class="prose">{strong}{weak}{check}</div></div>'
@@ -765,23 +775,24 @@ def render(data: dict) -> str:
     Raises:
         KeyError: 必須キーが欠けている場合。
     """
-    # **描画の前に契約を一括検証する。** 通ったあとは必須項目が揃っている前提でよい。
-    # 使う場所ごとに検証していた頃は、項目ごとに書き忘れる機会があった
-    validate(data)
+    # 判断に関わる違反はここで落ちる。表示項目の欠落は警告欄へ混ぜて続行する
+    contract_warnings = validate(data)
 
-    date = require(data, "date", "root")
-    bars = require(data, "bars", "root")
-    screen = require(data, "screen", "root")
+    date = data.get("date") or UNKNOWN
+    bars = data.get("bars") or {}
+    screen = data.get("screen") or {}
     eff = require(data, "effective_holdings", "root")
 
     as_of_parts = []
-    for a in require(data, "holdings_as_of", "root"):
-        text = f"{a.get('label', '保有')} {a.get('as_of', '不明')}"
+    for a in data.get("holdings_as_of") or []:
+        text = f"{a.get('label') or '保有'} {a.get('as_of') or UNKNOWN}"
         if a.get("count") is not None:
             text += f" ({a['count']}銘柄)"
         as_of_parts.append(text)
-    as_of = " / ".join(as_of_parts)
-    bar_line = " / ".join(f"{k.upper()} {v}" for k, v in bars.items())
+    as_of = " / ".join(as_of_parts) or UNKNOWN
+    bar_line = " / ".join(
+        f"{market.upper()} {bars.get(market) or UNKNOWN}" for market in BAR_MARKETS
+    )
     if data.get("stale_bars"):
         bar_line += "（前回から変わらず・独立した観測として数えない）"
 
@@ -798,14 +809,16 @@ def render(data: dict) -> str:
     # 「保有なし・候補なし」という正常な出力に化けて区別できなくなる
     holdings = require(data, "holdings", "root")
     candidates = require(data, "candidates", "root")
-    failures = require(screen, "failures", "screen")
+    failures = screen.get("failures")
     if candidates:
         cand_html = f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
     else:
         # 取得に失敗した銘柄は「条件を満たさなかった」のではなく「判定できていない」。
         # 混ぜると、取得障害の日を静かな日として読んでしまう
         note = ""
-        if failures:
+        if failures is None:
+            note = "取得失敗の件数は不明。候補ゼロと取得失敗を混同しないこと。"
+        elif failures:
             note = (
                 f"ただし {esc(failures)} 銘柄は取得に失敗しており、判定できていない。"
                 "候補ゼロと取得失敗は別の事象として扱うこと。"
@@ -821,7 +834,7 @@ def render(data: dict) -> str:
     )
 
     # 生成時刻は ISO8601 の "HH:MM" だけを見出しに出す (日付は左に既に出ている)
-    gen_time = str(require(data, "generated_at", "root"))[11:16]
+    gen_time = str(data.get("generated_at") or "")[11:16] or UNKNOWN
     lines = require(eff, "lines", "effective_holdings")
     if not lines:
         raise ValueError(
@@ -829,12 +842,14 @@ def render(data: dict) -> str:
             "入れる (docs/report-contract.md)"
         )
     eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
-    # 母集団と market も契約上の必須キー。空欄にすると、どの母集団を正常に調べたのか
-    # 分からないまま「候補なし」と報告することになる
-    universe = require(screen, "universe", "screen")
-    market = require(screen, "market", "screen")
+    # 母集団とmarketが欠けた場合は、警告に加えて見出しにも「不明」と出す
+    universe = screen.get("universe")
+    universe = UNKNOWN if universe is None else universe
+    market = screen.get("market") or UNKNOWN
     cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market={esc(market)})"
-    if failures:
+    if failures is None:
+        cand_head += f" / 取得失敗 {UNKNOWN}"
+    elif failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
     eff_head = (
         f"{term('effective_holdings', '実効保有')} — Investment {esc(as_of)} "
@@ -844,6 +859,7 @@ def render(data: dict) -> str:
     hold_head = f"保有 {len(holdings)} 銘柄"
     if ref_count:
         hold_head += f"（うち判断対象外 {ref_count} 銘柄）"
+    all_warnings = list(data.get("warnings") or []) + contract_warnings
 
     return f"""<!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
@@ -867,9 +883,9 @@ def render(data: dict) -> str:
 <h2>{cand_head}</h2>
 {cand_html}
 <h2>総括</h2>
-<div class="notes"><p>{esc(require(data, "summary", "root"))}</p></div>
+<div class="notes"><p>{esc(data.get("summary") or UNKNOWN)}</p></div>
 {notes_box("確認を取らずに置いた前提", data.get("assumptions") or [])}
-{notes_box("警告", data.get("warnings") or [], warn=True)}
+{notes_box("警告", all_warnings, warn=True)}
 <div class="foot">
   分析・提案のみ。このプロジェクトに発注機能は無い。判断の最終決定はりーすさん。<br>
   点線の付いた語は押すと説明が出る →
