@@ -179,6 +179,19 @@ def test_screen_one_records_confirmed_bar_even_without_candidate(
     assert bars == {"us": "2026-08-20"}
 
 
+def test_ensure_bar_dates_fills_market_missing_from_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """市場限定や全銘柄除外でも、もう一方の確定足日を独立取得する。"""
+    df = pd.DataFrame(index=pd.to_datetime(["2026-08-20"]))
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
+    bars = {"jp": "2026-08-21"}
+
+    screen.ensure_bar_dates(bars)
+
+    assert bars == {"jp": "2026-08-21", "us": "2026-08-20"}
+
+
 def test_break_at_threshold_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     """閾値ちょうどの突破は通す (境界は通過側)。"""
     _patch_bar(monkeypatch, [501.9, 502.0])  # 499.0 + 3.0 = 0.3 ATR
@@ -303,6 +316,7 @@ def test_json_output_is_machine_readable_and_counts_failures(
 
     monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
     monkeypatch.setattr(screen, "screen_one", fake_screen_one)
+    monkeypatch.setattr(screen, "ensure_bar_dates", lambda bars: None)
     monkeypatch.setattr(sys, "argv", ["screen.py", "--json", "--market", "jp"])
 
     screen.main()

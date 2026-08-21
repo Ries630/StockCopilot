@@ -61,8 +61,8 @@ uv run screen.py --json --earnings
 ```
 
 この JSON は STEP 3 まで保持し、`screen` と `candidates` の機械データへそのまま合流させる。
-価格・score・ATR・レンジ位置などを人間向けの丸め出力から復元しない。市場を限定する場合も
-`--market jp` / `--market us` を加えるだけで、`--json --earnings` は外さない。
+価格・score・ATR・レンジ位置などを人間向けの丸め出力から復元しない。夕方ブリーフは
+JP/US両市場を扱うため `--market` で限定せず、`--json --earnings` を外さない。
 
 **候補ゼロは正常な結果。** 埋め草の候補を作らない。
 

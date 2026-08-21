@@ -163,6 +163,16 @@ def screen_one(
     }
 
 
+def ensure_bar_dates(bar_dates: dict[str, str]) -> None:
+    """スクリーニング範囲と独立してJP/USの最新確定足日を補う。"""
+    for market, ticker in (("jp", UNIVERSE_JP[0]), ("us", UNIVERSE_US[0])):
+        if market in bar_dates:
+            continue
+        df = fetch_ohlcv(ticker, market=market, interval="1d", limit=2)
+        if not df.empty:
+            bar_dates[market] = df.index[-1].date().isoformat()
+
+
 def attach_earnings(candidates: list[dict]) -> None:
     """候補に決算注記を付ける (破壊的更新)。
 
@@ -285,6 +295,7 @@ def main() -> None:
         attach_earnings(candidates)
 
     if args.json:
+        ensure_bar_dates(bar_dates)
         print(json.dumps({
             "universe": len(universe),
             "market": args.market,
