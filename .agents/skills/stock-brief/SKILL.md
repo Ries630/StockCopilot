@@ -121,7 +121,7 @@ uv run report.py reports/YYYY-MM-DD_evening.json
 uv run notify.py reports/YYYY-MM-DD_evening.json
 ```
 
-**このコマンドの結果 (標準出力の 1 行) を STEP 6・7 の両方に必ず載せる。**
+**このコマンドの結果 (標準出力の 1 行) を STEP 7 に必ず載せる。**
 黙って落とすと「実行されなかった」のか「投稿だけ失敗した」のかが区別できない。
 
 | 出力 | 意味 |
