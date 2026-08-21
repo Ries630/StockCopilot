@@ -368,7 +368,8 @@ def main() -> None:
     # 誤った内容が push まで届いてしまう (通常は report.py が先に落ちる)
     data = json.loads(src.read_text(encoding="utf-8"))
     # 判断に関わる違反はここで落ちる。表示項目の欠落はSlack本文へ混ぜる
-    data["warnings"] = list(data.get("warnings") or []) + validate(data)
+    # 契約警告は長い運用警告で切り捨てられないよう先頭に置く
+    data["warnings"] = validate(data) + list(data.get("warnings") or [])
     report_path = args.report or str(src.with_suffix(".html"))
     print(f"[Slack] {notify(data, report_path, dry_run=args.dry_run)}")
 

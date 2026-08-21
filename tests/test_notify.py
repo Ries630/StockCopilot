@@ -204,6 +204,24 @@ def test_main_adds_contract_warnings_to_dry_run(
     assert "不明" in output
 
 
+def test_contract_warnings_precede_long_runtime_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    isolated_env: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """契約警告をSlackの上限で落とさない。"""
+    data = base_data(warnings=["運用警告" * 1000 for _ in range(20)])
+    del data["summary"]
+    src = tmp_path / "brief.json"
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["notify.py", str(src), "--dry-run"])
+
+    notify.main()
+
+    assert "'summary' が無い" in capsys.readouterr().out
+
+
 def test_main_rejects_decision_contract_violation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
