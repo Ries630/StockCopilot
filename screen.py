@@ -38,6 +38,7 @@ from config.universe import (
     MIN_MOVE_IN_ATR,
     MIN_TURNOVER_JPY,
     MIN_TURNOVER_USD,
+    NAMES_JP,
     UNIVERSE_JP,
     UNIVERSE_US,
     WATCHLIST_JP,
@@ -47,6 +48,7 @@ from lib.datasource import fetch_ohlcv
 from lib.earnings import earnings_note
 from lib.holdings import HeldTickers, held_tickers
 from lib.indicators import daily_stats
+from lib.names import display_name, label
 
 
 def build_universe(
@@ -191,6 +193,24 @@ def attach_earnings(candidates: list[dict]) -> None:
             c["earnings_note"] = ""
 
 
+def attach_names(candidates: list[dict]) -> None:
+    """候補に表示名を付ける (破壊的更新)。
+
+    **4 桁コードだけでは何の会社か分からない**日本株のために付ける。
+    解決の順序は lib/names.py が持つ (config の NAMES_JP → yfinance → None)。
+    決算日と同じく候補に絞ってから呼ぶ: 辞書に無い日本株は 1 銘柄 1 リクエストになる。
+
+    Args:
+        candidates: screen_one() の戻り値のリスト。
+    """
+    for c in candidates:
+        # 1 銘柄の取得失敗で候補全体を落とさない (名前の有無は候補の採否と別)
+        try:
+            c["name"] = display_name(c["ticker"], c["market"], NAMES_JP)
+        except Exception:
+            c["name"] = None
+
+
 def held_summary(held: HeldTickers | None, include_held: bool) -> str:
     """保有除外の内訳を表示用の文字列にする。
 
@@ -254,6 +274,8 @@ def json_candidate(row: dict) -> dict:
     if turnover is not None:
         symbol = "¥" if currency == "JPY" else "$"
         result["turnover"] = f"{symbol}{turnover:,.0f}"
+    if row.get("name"):
+        result["name"] = row["name"]
     if row.get("earnings_note"):
         note = row["earnings_note"]
         result["earnings"] = {"note": note, "warn": note.startswith("⚠")}
@@ -291,6 +313,7 @@ def main() -> None:
 
     candidates.sort(key=lambda r: -r["score"])
     candidates = candidates[:MAX_CANDIDATES]
+    attach_names(candidates)
     if args.earnings:
         attach_earnings(candidates)
 
@@ -332,7 +355,8 @@ def main() -> None:
     print(f"\n候補 {len(candidates)} 件 (採否は analyze.py の分析で判断する):\n")
     for c in candidates:
         cur = "¥" if c["market"] == "jp" else "$"
-        print(f"  {c['ticker']:<8} {cur}{c['close']:<12,.2f} 直近足 {c['change_pct']:+.2f}% "
+        print(f"  {label(c['ticker'], c.get('name')):<28} "
+              f"{cur}{c['close']:<12,.2f} 直近足 {c['change_pct']:+.2f}% "
               f"[score {c['score']:.1f} ATR]")
         print(f"    {' / '.join(c['reasons'])}")
         if c.get("earnings_note"):

@@ -276,6 +276,7 @@ def test_json_candidate_uses_report_keys_and_percent_units() -> None:
         "range_pos": 1.05,
         "atr_pct": 2.0,
         "turnover_avg20": 12_345_678.0,
+        "name": "Test Company",
         "earnings_note": "⚠ 決算 2026-08-25",
     }
 
@@ -288,6 +289,7 @@ def test_json_candidate_uses_report_keys_and_percent_units() -> None:
     assert result["pass_reason"] == "20日レンジを上に突破"
     assert result["range"] == {"low": 100.0, "high": 120.0, "pos_pct": 105.0}
     assert result["turnover"] == "$12,345,678"
+    assert result["name"] == "Test Company"
     assert result["earnings"] == {"note": "⚠ 決算 2026-08-25", "warn": True}
 
 

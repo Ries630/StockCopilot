@@ -19,10 +19,12 @@ import datetime as dt
 import json
 import sys
 
+from config.universe import NAMES_JP
 from lib.datasource import detect_market, fetch_ohlcv
 from lib.earnings import earnings_note
 from lib.holdings import load_holdings
 from lib.indicators import compute
+from lib.names import display_name
 
 # 保有データ (Investment の生成物) の as_of がこの日数より古ければ警告する。
 #
@@ -43,15 +45,15 @@ LEDGER_NOTE = (
 )
 
 
-def analyze_symbol(ticker: str, market: str, label: str = "") -> None:
+def analyze_symbol(ticker: str, market: str, extra: str = "") -> None:
     """1 銘柄の日足・週足の指標を表示する。
 
     Args:
         ticker: 生ティッカー。
         market: "jp" または "us"。
-        label: 銘柄名など表示用の補足。
+        extra: 銘柄名・口座・株数など表示用の補足。
     """
-    print(f"\n########## {ticker} {label} ##########")
+    print(f"\n########## {ticker} {extra} ##########")
     if note := earnings_note(ticker, market):
         print(note)
     for interval, name in (("1d", "日足"), ("1wk", "週足")):
@@ -120,7 +122,12 @@ def main() -> None:
     """引数の銘柄 (省略時は保有全銘柄) を順に分析する。"""
     args = sys.argv[1:]
     if args:
-        targets = [(t, detect_market(t), "") for t in args]
+        # 4 桁コードだけでは何の会社か分からないので、日本株には名前を付ける
+        # (保有モードは Investment の生成物が日本語名を持っている)
+        targets = []
+        for t in args:
+            market = detect_market(t)
+            targets.append((t, market, display_name(t, market, NAMES_JP) or ""))
     else:
         holdings = load_holdings()
         if not holdings:
@@ -132,9 +139,9 @@ def main() -> None:
             for h in holdings
         ]
 
-    for ticker, market, label in targets:
+    for ticker, market, extra in targets:
         try:
-            analyze_symbol(ticker, market, label)
+            analyze_symbol(ticker, market, extra)
         except Exception as e:  # 1 銘柄の失敗で全体を止めない
             print(f"  [warn] {ticker}: {str(e)[:120]}")
 
