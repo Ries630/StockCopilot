@@ -145,3 +145,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   テクニカル分析で `買い / 見送り / 決算後に再判定 / 保留` を判断する (analyze.py + journal)。
   実体は `.agents/skills/stock-screen/SKILL.md`
   → [ADR-0017](docs/adr/0017-screen-report-writes-verdict.md)
+
+## Code Review Rules
+
+- レビューコメントは日本語で記載する
