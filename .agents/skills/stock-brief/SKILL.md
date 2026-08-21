@@ -68,6 +68,10 @@ uv run screen.py --json --earnings
 
 ## STEP 3. 中間表現 JSON
 
+```bash
+mkdir -p reports
+```
+
 STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
 
 **キー・型・必須・語彙の正は
@@ -84,6 +88,8 @@ STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
   [`journal/README.md`](../../../journal/README.md)
 - **自動運用口座の銘柄は `reference_only: true`** にし、`verdict` は `"—"` を入れる
 - **確定足が前回エントリと同じなら `stale_bars: true`**
+- **`bars.jp` / `bars.us` は `screen.py --json` の `bars` から移す。** 実行日や平日から
+  推測しない。どちらかを取得できなければJSONを完成扱いにせず、取得失敗を解消して再実行する
 - **`signals` には色ではなく評価** (`good` / `warn` / `bad` / `unknown`) を入れる。
   `unknown` は実際のデータ不足にだけ使い、資金が動く判断とは併存させない。ホールド・見送り
   など非資金移動の判断は一律に `保留` へ変えず、分析自体が判断を確立できない場合だけ

@@ -94,17 +94,25 @@ def build_universe(
     return universe, held
 
 
-def screen_one(ticker: str, market: str) -> dict | None:
+def screen_one(
+    ticker: str,
+    market: str,
+    bar_dates: dict[str, str] | None = None,
+) -> dict | None:
     """1 銘柄を機械条件にかける。通過しなければ None。
 
     Args:
         ticker: 生ティッカー。
         market: "jp" または "us"。
+        bar_dates: 市場ごとの最新確定足日を収集する辞書。省略時は収集しない。
 
     Returns:
         候補 dict (score / reasons 付き) または None。
     """
     df = fetch_ohlcv(ticker, market=market, interval="1d", limit=60)
+    if bar_dates is not None and not df.empty:
+        bar_date = df.index[-1].date().isoformat()
+        bar_dates[market] = max(bar_dates.get(market, bar_date), bar_date)
     stats = daily_stats(df)
     if not stats:
         return None
@@ -257,9 +265,10 @@ def main() -> None:
         print(held_summary(held, args.include_held))
     candidates = []
     failures = []
+    bar_dates: dict[str, str] = {}
     for ticker, market in universe:
         try:
-            row = screen_one(ticker, market)
+            row = screen_one(ticker, market, bar_dates)
         except Exception as e:  # 1 銘柄の失敗で全体を止めない
             message = str(e)[:100]
             failures.append({"ticker": ticker, "message": message})
@@ -279,6 +288,7 @@ def main() -> None:
         print(json.dumps({
             "universe": len(universe),
             "market": args.market,
+            "bars": bar_dates,
             "failures": len(failures),
             "failure_details": failures,
             # 銘柄そのものは出さない (public リポジトリに貼られうる出力のため)。
