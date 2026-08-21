@@ -83,12 +83,14 @@ ADR の役目。
 |---|---|---|
 | [0016](0016-surface-unavailable-earnings-date.md) | 決算日を取得できなかったことを銘柄種別で切り分けて出力に出す | 承認済み |
 
-### レポートの表現範囲（2026-08-13）
+### レポートと Slack 通知（2026-08-20〜21）
 
 | # | 決定 | ステータス |
 |---|---|---|
 | [0017](0017-screen-report-writes-verdict.md) | スクリーニングのレポートには買いの判断を書く（コード側の分離は維持する） | 承認済み |
+| [0020](0020-intermediate-report-json.md) | 夕方ブリーフの出力に中間表現 JSON を挟む | 承認済み |
 | [0021](0021-json-schema-for-report-contract.md) | 中間表現の構造をJSON Schema、業務上の組み合わせをPythonで検証する | 承認済み |
+| [0022](0022-slack-webhook-notification.md) | Slack 通知をスクリプトの Incoming Webhook に移す | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）
 
