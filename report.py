@@ -1,12 +1,13 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = []
+# dependencies = ["jsonschema>=4.25"]
 # ///
 """中間表現 JSON から、自己完結した HTML レポートを組み立てる。
 
-入力の仕様の正は `docs/report-contract.md` (→ docs/adr/0020-intermediate-report-json.md)。
+入力構造の正は`docs/report-contract.schema.json`、意味の正は`docs/report-contract.md`
+（→ `docs/adr/0020-intermediate-report-json.md`）。
 このスクリプトは **判断をしない**。JSON に書かれた判断とデータを描画するだけで、
-指標の再計算もネットワークアクセスもしない (依存も標準ライブラリだけ)。
+指標の再計算もネットワークアクセスもしない。入力はJSON Schemaで検証する。
 
     uv run report.py reports/2026-08-20_evening.json
     uv run report.py reports/2026-08-20_evening.json -o /tmp/preview.html
