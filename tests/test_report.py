@@ -272,6 +272,81 @@ def test_missing_failures_count_raises() -> None:
         report.render(base_data(screen={"universe": 25, "market": "all"}))
 
 
+def test_missing_ticker_raises() -> None:
+    """銘柄を特定できない判断を通さない。
+
+    名前も省略されていると、ヒーローと Slack に「売却」「買い」だけが並び、
+    どの銘柄の話か分からなくなる。
+    """
+    bad = position()
+    del bad["ticker"]
+    with pytest.raises(KeyError, match="ticker"):
+        report.render(base_data(holdings=[bad]))
+
+    bad_cand = candidate()
+    del bad_cand["ticker"]
+    with pytest.raises(KeyError, match="ticker"):
+        report.render(base_data(candidates=[bad_cand]))
+
+
+@pytest.mark.parametrize("currency", ["jpy", "JPY ", "EUR", ""])
+def test_unknown_currency_raises(currency: str) -> None:
+    """未知の通貨コードを USD に倒さない。
+
+    倒すと日本株の ¥3,120 が `$3,120.00` として表示される。
+    """
+    with pytest.raises(ValueError, match="通貨"):
+        report.render(base_data(holdings=[position(currency=currency)]))
+
+
+def test_missing_signal_axis_raises() -> None:
+    """軸の欠落を unknown に倒さない。"""
+    bad = position()
+    del bad["signals"]["overheat"]
+    with pytest.raises(KeyError, match="overheat"):
+        report.render(base_data(holdings=[bad]))
+
+
+def test_unknown_signal_value_raises() -> None:
+    """表記揺れを unknown に倒さない。
+
+    unknown は「データ不足」を意味し、その銘柄の判断が保留になる根拠でもあるため、
+    書き漏らしから偽の根拠が作られる。
+    """
+    bad = candidate()
+    bad["signals"]["weekly"] = "goood"
+    with pytest.raises(ValueError, match="週足"):
+        report.render(base_data(candidates=[bad]))
+
+
+def test_unknown_is_still_a_valid_signal_value() -> None:
+    """本物のデータ不足は通す。"""
+    ok = position(
+        verdict="保留",
+        signals={"weekly": "unknown", "daily": "unknown", "overheat": "warn", "volume": "unknown"},
+    )
+    assert "9999" in report.render(base_data(holdings=[ok]))
+
+
+def test_missing_universe_or_market_raises() -> None:
+    """どの母集団を調べたか分からないまま「候補なし」と報告しない。"""
+    for key in ("universe", "market"):
+        screen = {"universe": 25, "market": "all", "failures": 0}
+        del screen[key]
+        with pytest.raises(KeyError, match=key):
+            report.render(base_data(screen=screen))
+
+
+def test_schema_is_validated() -> None:
+    """未対応バージョンを v1 として描かない。"""
+    with pytest.raises(ValueError, match="schema"):
+        report.render(base_data(schema=2))
+    with pytest.raises(KeyError, match="schema"):
+        broken = base_data()
+        del broken["schema"]
+        report.render(broken)
+
+
 def test_no_external_resources() -> None:
     html = report.render(base_data(holdings=[position()], candidates=[candidate()]))
     for token in ("http://", "https://", "<script", "localStorage", "@import"):

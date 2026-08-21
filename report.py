@@ -49,6 +49,12 @@ SIGNAL_AXES = (
     ("volume", "出来高"),
 )
 
+# この report.py が読める中間表現のバージョン。契約を変えたら上げる
+SCHEMA_VERSION = 1
+
+# 契約が許す通貨コード。未知の値を USD に倒すと、日本株の価格が $ 表記で出る
+CURRENCIES = ("JPY", "USD")
+
 # 判断ラベル → ヒーローとバッジの色。ここに無いラベルは中立色で描く
 VERDICT_COLOR = {
     "買い": "var(--good)",
@@ -218,6 +224,72 @@ def signed_pct(value) -> str:
         表示用の文字列 (例: "+1.2%")。
     """
     return "—" if value is None else f"{value:+.1f}%"
+
+
+def require_choice(value, allowed: tuple, where: str, label: str):
+    """値が契約の語彙に含まれることを確かめる。
+
+    キーの存在だけを見て値を見ないと、表記揺れ ("jpy" / "goood") が既定値に倒れて
+    **もっともらしい出力**になる。判断ラベルの検証は語彙の所有元である
+    `lib/verdicts.check_verdict()` にある。
+
+    Args:
+        value: 検証する値。
+        allowed: 許される語彙。
+        where: エラー文に出す位置の説明。
+        label: エラー文に出す項目名。
+
+    Returns:
+        検証済みの値。
+
+    Raises:
+        ValueError: 語彙に無い値の場合。
+    """
+    if value not in allowed:
+        raise ValueError(
+            f"{where}: {label} {value!r} は契約外 "
+            f"(使えるのは {' / '.join(str(a) for a in allowed)} / docs/report-contract.md)"
+        )
+    return value
+
+
+def require_currency(item: dict, where: str) -> str:
+    """通貨コードを取り出して検証する。
+
+    Args:
+        item: Position または Candidate。
+        where: エラー文に出す位置の説明。
+
+    Returns:
+        "JPY" または "USD"。
+    """
+    return require_choice(require(item, "currency", where), CURRENCIES, where, "通貨")
+
+
+def require_signals(item: dict, where: str) -> dict:
+    """4 軸のシグナルを取り出し、軸の存在と値の語彙を検証する。
+
+    軸が欠けても未知の値でも `unknown` に倒すと、**契約上「データ不足」を意味する値**が
+    書き漏らしや表記揺れから作られる。`unknown` はその銘柄の判断が `保留` になる
+    根拠でもあるため、偽の根拠が生まれることになる。
+
+    Args:
+        item: Position または Candidate。
+        where: エラー文に出す位置の説明。
+
+    Returns:
+        検証済みの signals dict。
+
+    Raises:
+        KeyError: signals 自体または軸が欠けている場合。
+        ValueError: 軸の値が語彙に無い場合。
+    """
+    signals = require(item, "signals", where)
+    for key, name in SIGNAL_AXES:
+        if key not in signals:
+            raise KeyError(f"{where}: signals.{key} ({name}) が無い (docs/report-contract.md)")
+        require_choice(signals[key], tuple(SIGNAL_STYLE), f"{where}.signals", f"{name}の評価")
+    return signals
 
 
 def sparkline(closes: list, width: int = 300, height: int = 40) -> str:
@@ -416,7 +488,8 @@ def position_card(pos: dict) -> str:
         HTML の断片。
     """
     where = f"holdings[{pos.get('ticker', '?')}]"
-    currency = require(pos, "currency", where)
+    ticker = require(pos, "ticker", where)
+    currency = require_currency(pos, where)
     price = require(pos, "price", where)
     prose = require(pos, "prose", where)
     # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
@@ -443,13 +516,13 @@ def position_card(pos: dict) -> str:
     return (
         f'<div class="{card_cls}">'
         f'<div class="top"><div>'
-        f'<h3>{esc(pos.get("ticker"))} {esc(pos.get("name"))}</h3>'
+        f'<h3>{esc(ticker)} {esc(pos.get("name"))}</h3>'
         f'<div class="sub num">{esc(shares_text(pos.get("shares")))}</div></div>'
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(pos.get("change_pct"))}</span></div>'
         f'<div style="margin-top:6px">{scenario}</div>'
-        f"{signal_bars(require(pos, 'signals', where))}"
+        f"{signal_bars(require_signals(pos, where))}"
         f"{sparkline(pos.get('closes') or [])}"
         f"{level_axis(price, pos.get('levels') or {}, currency)}"
         f"{earnings_chip(pos.get('earnings'))}"
@@ -470,7 +543,8 @@ def candidate_card(cand: dict) -> str:
         HTML の断片。
     """
     where = f"candidates[{cand.get('ticker', '?')}]"
-    currency = require(cand, "currency", where)
+    ticker = require(cand, "ticker", where)
+    currency = require_currency(cand, where)
     price = require(cand, "price", where)
     prose = require(cand, "prose", where)
     verdict = check_verdict(require(cand, "verdict", where), CANDIDATE_VERDICTS, where)
@@ -495,14 +569,14 @@ def candidate_card(cand: dict) -> str:
     meta = " · ".join(parts)
     return (
         f'<div class="card"><div class="top"><div>'
-        f'<h3>{esc(cand.get("ticker"))} {esc(cand.get("name"))}</h3>'
+        f'<h3>{esc(ticker)} {esc(cand.get("name"))}</h3>'
         f'<div class="sub">{esc(require(cand, "pass_reason", where))}</div></div>'
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(cand.get("change_pct"))}</span></div>'
         f'<div class="sub num" style="margin-top:2px">{esc(meta)}</div>'
         f"{score_bar(float(require(cand, 'score_atr', where)))}"
-        f"{signal_bars(require(cand, 'signals', where))}"
+        f"{signal_bars(require_signals(cand, where))}"
         f"{sparkline(cand.get('closes') or [])}"
         f"{range_axis(require(cand, 'range', where), price, currency)}"
         f"{level_axis(price, cand.get('levels') or {}, currency)}"
@@ -572,6 +646,9 @@ def render(data: dict) -> str:
     Raises:
         KeyError: 必須キーが欠けている場合。
     """
+    # 契約のバージョンを見ずに描くと、構造の違う v2 を v1 として部分的に描いてしまう
+    require_choice(require(data, "schema", "root"), (SCHEMA_VERSION,), "root", "schema")
+
     date = require(data, "date", "root")
     bars = require(data, "bars", "root")
     screen = require(data, "screen", "root")
@@ -631,10 +708,11 @@ def render(data: dict) -> str:
             "入れる (docs/report-contract.md)"
         )
     eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
-    cand_head = (
-        f"候補 {len(candidates)} 件 — 母集団 {esc(screen.get('universe'))} 銘柄 "
-        f"(market={esc(screen.get('market'))})"
-    )
+    # 母集団と market も契約上の必須キー。空欄にすると、どの母集団を正常に調べたのか
+    # 分からないまま「候補なし」と報告することになる
+    universe = require(screen, "universe", "screen")
+    market = require(screen, "market", "screen")
+    cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market={esc(market)})"
     if failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
     eff_head = f"実効保有 — Investment {esc(as_of)} + 執行記録 {esc(eff.get('executions', 0))} 件"
