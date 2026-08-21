@@ -31,12 +31,12 @@ flowchart LR
 
     AN -- stock-screen --> VS["買い / 見送り /<br/>決算後に再判定 / 保留"]
     AN -- stock-check --> VC["ホールド / 積増し /<br/>部分利確 / 売却 / 保留"]
-    VS --> J["journal/journal.md<br/>追跡対象外"]
-    VC --> J
     VS -- stock-brief --> IR["中間表現 JSON<br/>reports/*_evening.json"]
     VC -- stock-brief --> IR
     IR --> RP["report.py<br/>HTML レポート"]
     IR --> NT["notify.py<br/>Slack (Webhook)"]
+    IR -. 前回の起点 .-> AN
+    J["journal/journal.md<br/>執行台帳 + 運用メモ<br/>追跡対象外"] --> HD
 ```
 
 - **買う / 買わないの判断は `screen.py` には無い。** スクリーナーは候補を絞るだけで、
@@ -52,6 +52,9 @@ flowchart LR
   入力にし、**通知でメンションを鳴らす条件を LLM の裁量から外している**
   ([ADR-0020](docs/adr/0020-intermediate-report-json.md) /
   [ADR-0022](docs/adr/0022-slack-webhook-notification.md))
+- **夕方ブリーフの分析は中間表現 JSON を正とする。** `stock-check` / `stock-screen` を
+  単体で実行したときだけ、次回比較のためジャーナルに履歴を残す
+  ([ADR-0028](docs/adr/0028-standalone-analysis-journal-history.md))
 
 `config/watchlist.py` と `journal/journal.md` は追跡対象外
 ([ADR-0008](docs/adr/0008-no-holdings-in-repo.md))。
@@ -77,6 +80,7 @@ flowchart LR
 | Slack 通知をスクリプトの Incoming Webhook に移す | [0022](docs/adr/0022-slack-webhook-notification.md) |
 | 日本株の名前は手書きの辞書を正にし、yfinance を落ち先にする | [0023](docs/adr/0023-japanese-stock-display-names.md) |
 | 用語の説明は本文ではなくポップオーバーに置く | [0024](docs/adr/0024-glossary-popovers.md) |
+| 単体分析はジャーナルに履歴を残す | [0028](docs/adr/0028-standalone-analysis-journal-history.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 
@@ -151,7 +155,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env` して埋める)。�
 | `docs/report-contract.schema.json` | 中間表現のキー・型・必須・語彙の正 |
 | `docs/report-contract.md` | 中間表現の意味・組み合わせ規則の正 |
 | `.env.example` | Slack 資格情報の雛形 (本体 `.env` は追跡対象外) |
-| `journal/README.md` | 分析ジャーナルの書式仕様 (本体は追跡対象外) |
+| `journal/README.md` | ジャーナルの役割と書式の正 (本体は追跡対象外)。**日々の分析は書かない** |
 | `tests/` | テスト (ネットワークアクセスなし) |
 | `docs/adr/` | 設計判断の記録 (ADR) |
 
@@ -198,8 +202,8 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 
 出力をどう読むかの正は [`docs/output-contract.md`](docs/output-contract.md)、
 中間表現の構造の正は [`docs/report-contract.schema.json`](docs/report-contract.schema.json)、
-意味の正は [`docs/report-contract.md`](docs/report-contract.md)、
-ジャーナルの書式と判断ラベルの正は [`journal/README.md`](journal/README.md) にあり、
+意味と判断ラベルの正は [`docs/report-contract.md`](docs/report-contract.md)、
+ジャーナルの役割と執行の書式の正は [`journal/README.md`](journal/README.md) にあり、
 スキルはそこへリンクするだけにしている。運用して分かった教訓は追跡対象外の
 `journal/lessons.md` に置く (実際の保有についての観測を含むため)。
 

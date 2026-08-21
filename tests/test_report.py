@@ -5,7 +5,10 @@
 出力は決定的になる。
 """
 
+import json
+import pathlib
 import re
+import sys
 
 import pytest
 
@@ -494,3 +497,86 @@ def test_glossary_is_hidden_without_popover_support() -> None:
 
 def test_unknown_term_falls_back_to_plain_text() -> None:
     assert report.term("存在しないキー", "そのまま") == "そのまま"
+
+
+# ─── latest.json の更新 ────────────────────────────────────
+
+
+def run_main(monkeypatch: pytest.MonkeyPatch, *argv: str) -> None:
+    """report.py の main() を引数付きで走らせる。
+
+    Args:
+        monkeypatch: pytest の monkeypatch。
+        *argv: `report.py` に続くコマンドライン引数。
+    """
+    monkeypatch.setattr(sys, "argv", ["report.py", *argv])
+    report.main()
+
+
+def test_latest_json_is_updated(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
+    """次回のシリーズ分析の起点を機械的に固定する。
+
+    スキルの手作業にすると、1 回の書き忘れで前回との差分が静かに切れる。
+    """
+    src = tmp_path / "2026-08-20_evening.json"
+    src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
+    run_main(monkeypatch, str(src))
+
+    latest = tmp_path / "latest.json"
+    assert json.loads(latest.read_text(encoding="utf-8"))["date"] == "2026-08-20"
+    assert (tmp_path / "2026-08-20_evening.html").exists()
+
+
+def test_no_latest_flag_skips_update(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    src = tmp_path / "2026-08-20_evening.json"
+    src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
+    run_main(monkeypatch, str(src), "--no-latest")
+    assert not (tmp_path / "latest.json").exists()
+
+
+def test_historical_report_does_not_rewind_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """過去レポートの再生成でシリーズ分析の起点を巻き戻さない。"""
+    latest = tmp_path / "latest.json"
+    newer = base_data()
+    newer["date"] = "2026-08-21"
+    latest.write_text(json.dumps(newer, ensure_ascii=False), encoding="utf-8")
+    src = tmp_path / "2026-08-20_evening.json"
+    src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
+
+    run_main(monkeypatch, str(src))
+
+    assert json.loads(latest.read_text(encoding="utf-8"))["date"] == "2026-08-21"
+
+
+def test_contract_violation_leaves_latest_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """落ちる入力で latest.json を上書きしない。
+
+    上書きしてしまうと、壊れた JSON が次回のシリーズ分析の起点になる。
+    """
+    latest = tmp_path / "latest.json"
+    latest.write_text('{"date": "2026-08-19"}', encoding="utf-8")
+
+    broken = base_data()
+    del broken["summary"]
+    src = tmp_path / "2026-08-20_evening.json"
+    src.write_text(json.dumps(broken, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(KeyError):
+        run_main(monkeypatch, str(src))
+    assert json.loads(latest.read_text(encoding="utf-8"))["date"] == "2026-08-19"
+
+
+def test_latest_json_is_not_copied_onto_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """latest.json 自体を渡されたときに自分を書き直さない。"""
+    src = tmp_path / "latest.json"
+    src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
+    run_main(monkeypatch, str(src))
+    assert (tmp_path / "latest.html").exists()

@@ -15,6 +15,11 @@
 出力は既定で入力と同じ場所の `.html`。**保有情報が入るので `reports/` の外に
 既定で書き出さない** (→ docs/adr/0008-no-holdings-in-repo.md)。
 
+あわせて入力と同じ場所に `latest.json` を複製する。**次回実行がシリーズ分析の起点に
+使う**もので、スキルの手作業にすると 1 回の書き忘れで前回との差分が静かに切れる
+(→ docs/adr/0025-journal-as-ledger-and-memo.md)。TradingCopilot の
+`order_plans/latest.json` と同じ形。
+
 グラフィックだけでなく散文 (`prose`) を必ず描画する。HTML 単独でレポートとして
 成立させるためで、図だけ並べても読み手は判断を再構成できない。
 """
@@ -880,13 +885,30 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="中間表現 JSON から HTML レポートを生成する")
     ap.add_argument("source", help="中間表現 JSON のパス")
     ap.add_argument("-o", "--out", help="出力先 (既定: 入力と同じ場所の .html)")
+    ap.add_argument(
+        "--no-latest", action="store_true", help="latest.json を更新しない (プレビュー用)"
+    )
     args = ap.parse_args()
 
     src = pathlib.Path(args.source)
-    data = json.loads(src.read_text(encoding="utf-8"))
+    raw = src.read_text(encoding="utf-8")
+    data = json.loads(raw)
     out = pathlib.Path(args.out) if args.out else src.with_suffix(".html")
-    out.write_text(render(data), encoding="utf-8")
+    # HTML を先に組む。契約違反ならここで落ち、latest.json は更新されない
+    html = render(data)
+    out.write_text(html, encoding="utf-8")
     print(f"[report] {out}")
+
+    if not args.no_latest and src.name != "latest.json":
+        latest = src.with_name("latest.json")
+        latest_date = ""
+        if latest.exists():
+            latest_date = json.loads(latest.read_text(encoding="utf-8")).get("date", "")
+        if data["date"] >= latest_date:
+            latest.write_text(raw, encoding="utf-8")
+            print(f"[report] {latest} (次回のシリーズ分析の起点)")
+        else:
+            print(f"[report] {latest} はより新しいため更新しない")
 
 
 if __name__ == "__main__":
