@@ -52,9 +52,9 @@ flowchart LR
   入力にし、**通知でメンションを鳴らす条件を LLM の裁量から外している**
   ([ADR-0020](docs/adr/0020-intermediate-report-json.md) /
   [ADR-0022](docs/adr/0022-slack-webhook-notification.md))
-- **ジャーナルは日々の分析を持たない。** 持つのは**執行の台帳と運用メモの 2 つだけ**で、
-  分析の正は中間表現 JSON、人が読むのは HTML
-  ([ADR-0025](docs/adr/0025-journal-as-ledger-and-memo.md))
+- **夕方ブリーフの分析は中間表現 JSON を正とする。** `stock-check` / `stock-screen` を
+  単体で実行したときだけ、次回比較のためジャーナルに履歴を残す
+  ([ADR-0028](docs/adr/0028-standalone-analysis-journal-history.md))
 
 `config/watchlist.py` と `journal/journal.md` は追跡対象外
 ([ADR-0008](docs/adr/0008-no-holdings-in-repo.md))。
@@ -80,7 +80,7 @@ flowchart LR
 | Slack 通知をスクリプトの Incoming Webhook に移す | [0022](docs/adr/0022-slack-webhook-notification.md) |
 | 日本株の名前は手書きの辞書を正にし、yfinance を落ち先にする | [0023](docs/adr/0023-japanese-stock-display-names.md) |
 | 用語の説明は本文ではなくポップオーバーに置く | [0024](docs/adr/0024-glossary-popovers.md) |
-| ジャーナルの役割を「執行台帳 + 運用メモ」に絞る | [0025](docs/adr/0025-journal-as-ledger-and-memo.md) |
+| 単体分析はジャーナルに履歴を残す | [0028](docs/adr/0028-standalone-analysis-journal-history.md) |
 
 一覧と、廃止された判断を含む全件は [`docs/adr/README.md`](docs/adr/README.md)。
 

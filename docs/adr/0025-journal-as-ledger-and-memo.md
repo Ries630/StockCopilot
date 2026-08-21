@@ -1,6 +1,6 @@
 # ADR-0025: ジャーナルの役割を「執行台帳 + 運用メモ」に絞る
 
-- ステータス: 承認済み
+- ステータス: 廃止（ADR-0028 により置換）
 - 日付: 2026-08-21
 - 関連: [#60](https://github.com/Ries630/StockCopilot/issues/60) / [#69](https://github.com/Ries630/StockCopilot/issues/69) / [ADR-0020](0020-intermediate-report-json.md)
 
@@ -112,3 +112,9 @@ JSON が 1 件も無いため、ジャーナルの最終エントリを読む fa
   中間表現の項目に足す
 - `reports/` を消して困ったことが起きたら、バックアップの経路を用意する
 - 移行が済んで JSON が溜まったら、スキルからジャーナル fallback を消す
+
+## 廃止の経緯
+
+単体で起動する `stock-check` / `stock-screen` は中間表現JSONを作らず、日次分析を
+ジャーナルからも除くと前回比較の起点を失うことがレビューで判明した。単体経路の記録を
+残す方針へ ADR-0028 で置換する。

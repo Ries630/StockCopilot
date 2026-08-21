@@ -93,7 +93,8 @@ ADR の役目。
 | [0022](0022-slack-webhook-notification.md) | Slack 通知をスクリプトの Incoming Webhook に移す | 承認済み |
 | [0023](0023-japanese-stock-display-names.md) | 日本株の表示名は手書きの辞書を正にし、yfinanceを落ち先にする | 承認済み |
 | [0024](0024-glossary-popovers.md) | 用語の説明は本文ではなくポップオーバーに置く | 承認済み |
-| [0025](0025-journal-as-ledger-and-memo.md) | ジャーナルの役割を「執行台帳 + 運用メモ」に絞る | 承認済み |
+| [0025](0025-journal-as-ledger-and-memo.md) | ジャーナルの役割を「執行台帳 + 運用メモ」に絞る | 廃止（ADR-0028 により置換） |
+| [0028](0028-standalone-analysis-journal-history.md) | 単体分析はジャーナルに履歴を残す | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）
 

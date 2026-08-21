@@ -85,9 +85,9 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `notify.py` — 中間表現 → Slack (Incoming Webhook)。**LLM は Slack ツールを呼ばない**。
   毎日投稿し、メンションは資金が動く判断がある日だけ
   → [ADR-0022](docs/adr/0022-slack-webhook-notification.md)
-- `journal/README.md` — **ジャーナルの役割と書式の正**。ジャーナルが持つのは
-  **執行の台帳と運用メモの 2 つだけで、日々の分析は書かない** (正は中間表現 JSON)
-  → [ADR-0025](docs/adr/0025-journal-as-ledger-and-memo.md)。
+- `journal/README.md` — **ジャーナルの役割と書式の正**。執行の台帳・運用メモに加え、
+  中間表現を作らない単体分析の履歴を持つ
+  → [ADR-0028](docs/adr/0028-standalone-analysis-journal-history.md)。
   本体 `journal/journal.md` は **git 追跡対象外**
 - `tests/` + `run_tests.py` — テスト。**ネットワークにアクセスしない** (yfinance を叩くと
   実行日と市場の状態で結果が変わり CI が不安定になる)。時刻依存のロジックは
