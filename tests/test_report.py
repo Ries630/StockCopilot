@@ -315,7 +315,7 @@ def test_unknown_signal_value_raises() -> None:
     """
     bad = candidate()
     bad["signals"]["weekly"] = "goood"
-    with pytest.raises(ValueError, match="週足"):
+    with pytest.raises(ValueError, match="weekly"):
         report.render(base_data(candidates=[bad]))
 
 
