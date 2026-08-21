@@ -250,20 +250,19 @@ def test_signal_vocabulary(axis: str) -> None:
         validate(base_data(candidates=[cand]))
 
 
-def test_jp_and_us_names_are_optional_but_nonempty_when_present() -> None:
-    """`name`の有無は市場で変えない。"""
+def test_jp_names_are_required_and_us_name_is_optional() -> None:
+    """日本株は名前を必須にし、米国株はティッカーだけでも許す。"""
     jp_position = position(currency="JPY")
     jp_position.pop("name")
     jp_candidate = candidate(market="jp", currency="JPY")
     jp_candidate.pop("name")
     us_candidate = candidate()
     us_candidate.pop("name")
-    validate(
-        base_data(
-            holdings=[jp_position],
-            candidates=[jp_candidate, us_candidate],
-        )
-    )
+    with pytest.raises(KeyError, match="name"):
+        validate(base_data(holdings=[jp_position]))
+    with pytest.raises(KeyError, match="name"):
+        validate(base_data(candidates=[jp_candidate]))
+    validate(base_data(candidates=[us_candidate]))
 
     jp_candidate["name"] = " "
     with pytest.raises(ValueError, match="name"):

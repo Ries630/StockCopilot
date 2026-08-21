@@ -54,7 +54,7 @@ UNIVERSE_JP = [
 # **4 桁コードだけでは何の会社か分からない**ため、出力には必ず名前を併記する。
 # yfinance も名前を返すが英語なので (7203 → "Toyota Motor Corporation")、
 # 日本語で出したい銘柄はここに書く。ここに無い銘柄は yfinance の英語名に落ちる
-# (→ docs/adr/0022-japanese-stock-display-names.md)。
+# (→ docs/adr/0023-japanese-stock-display-names.md)。
 #
 # 保有銘柄はここに書かない。保有の名前は Investment の生成物から来る
 # (public リポジトリに保有を残さないため → docs/adr/0008)。

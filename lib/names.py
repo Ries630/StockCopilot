@@ -1,7 +1,7 @@
 """銘柄の表示名の解決。
 
 **4 桁コードだけでは何の会社か分からない**日本株のために、出力へ必ず名前を
-併記できるようにする (→ docs/adr/0022-japanese-stock-display-names.md)。
+併記できるようにする (→ docs/adr/0023-japanese-stock-display-names.md)。
 
 解決の順序は 1 か所に閉じてある。screen.py と analyze.py の両方から使うため、
 片方だけ違う順序になると同じ銘柄が別の名前で出る。
