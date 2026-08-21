@@ -536,6 +536,22 @@ def test_no_latest_flag_skips_update(
     assert not (tmp_path / "latest.json").exists()
 
 
+def test_historical_report_does_not_rewind_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """過去レポートの再生成でシリーズ分析の起点を巻き戻さない。"""
+    latest = tmp_path / "latest.json"
+    newer = base_data()
+    newer["date"] = "2026-08-21"
+    latest.write_text(json.dumps(newer, ensure_ascii=False), encoding="utf-8")
+    src = tmp_path / "2026-08-20_evening.json"
+    src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
+
+    run_main(monkeypatch, str(src))
+
+    assert json.loads(latest.read_text(encoding="utf-8"))["date"] == "2026-08-21"
+
+
 def test_contract_violation_leaves_latest_untouched(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:

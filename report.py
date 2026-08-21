@@ -901,8 +901,14 @@ def main() -> None:
 
     if not args.no_latest and src.name != "latest.json":
         latest = src.with_name("latest.json")
-        latest.write_text(raw, encoding="utf-8")
-        print(f"[report] {latest} (次回のシリーズ分析の起点)")
+        latest_date = ""
+        if latest.exists():
+            latest_date = json.loads(latest.read_text(encoding="utf-8")).get("date", "")
+        if data["date"] >= latest_date:
+            latest.write_text(raw, encoding="utf-8")
+            print(f"[report] {latest} (次回のシリーズ分析の起点)")
+        else:
+            print(f"[report] {latest} はより新しいため更新しない")
 
 
 if __name__ == "__main__":

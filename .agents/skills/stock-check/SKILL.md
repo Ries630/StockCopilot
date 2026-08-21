@@ -62,9 +62,10 @@ uv run analyze.py 9999 AAPL # 銘柄指定
 
 ### STEP 2. 前回の中間表現と執行記録の読み込み
 
-`reports/latest.json` から、銘柄ごとの**前回の結論 (`verdict`)・キーレベル (`levels`)・シナリオ (`scenario` / `prose`)** を把握する。構造は `docs/report-contract.schema.json`、意味は `docs/report-contract.md` を見る。
+`reports/latest.json` と `journal/journal.md` の単体分析記録を読み、**より新しい日付**を前回の
+起点にする。銘柄ごとの結論 (`verdict`)・キーレベル (`levels`)・シナリオ (`scenario` / `prose`) を把握する。構造は `docs/report-contract.schema.json`、意味は `docs/report-contract.md` を見る。
 
-- **無ければ `journal/journal.md` の最終エントリを読む** (2026-08-20 までのエントリは定型の分析を含む)。それも無ければ初回として扱う
+- どちらも無ければ初回として扱う
 - この fallback は移行期のためのもので、JSON が溜まったら消す → `docs/adr/0025-journal-as-ledger-and-memo.md`
 
 あわせて **`as_of` 以降のすべての `### 執行` を `journal/journal.md` から拾い、実効保有を計算する**。書式は `journal/README.md` の「執行の記録」を見る。**執行の台帳はジャーナルのままで、JSON には移っていない。**
