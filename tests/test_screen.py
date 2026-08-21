@@ -183,7 +183,9 @@ def test_ensure_bar_dates_fills_market_missing_from_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """市場限定や全銘柄除外でも、もう一方の確定足日を独立取得する。"""
-    df = pd.DataFrame(index=pd.to_datetime(["2026-08-20"]))
+    df = pd.DataFrame(
+        {"close": [100.0]}, index=pd.to_datetime(["2026-08-20"])
+    )
     monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
     bars = {"jp": "2026-08-21"}
 
