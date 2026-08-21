@@ -203,6 +203,45 @@ def held_summary(held: HeldTickers | None, include_held: bool) -> str:
     return "\n".join(lines)
 
 
+def json_candidate(row: dict) -> dict:
+    """スクリーナーの内部行を中間表現へ合流できる機械データに変換する。
+
+    単位変換やキー名の変換をLLMへ委ねると、`range_pos=1.05`を`pos_pct=1.05`と
+    誤って写す余地がある。決定的に変換できる項目はJSON出力時点で揃える。
+
+    Args:
+        row: `screen_one()`が返した内部形式の候補。
+
+    Returns:
+        `docs/report-contract.schema.json`のCandidateへそのまま合流できる機械データ。
+        判断・signals・proseは分析後に追加するため含めない。
+    """
+    currency = "JPY" if row["market"] == "jp" else "USD"
+    turnover = row.get("turnover_avg20")
+    result = {
+        "ticker": row["ticker"],
+        "market": row["market"],
+        "currency": currency,
+        "price": row["close"],
+        "change_pct": row["change_pct"],
+        "score_atr": row["score"],
+        "pass_reason": " / ".join(row["reasons"]),
+        "range": {
+            "low": row["low20"],
+            "high": row["high20"],
+            "pos_pct": row["range_pos"] * 100,
+        },
+        "atr_pct": row["atr_pct"],
+    }
+    if turnover is not None:
+        symbol = "¥" if currency == "JPY" else "$"
+        result["turnover"] = f"{symbol}{turnover:,.0f}"
+    if row.get("earnings_note"):
+        note = row["earnings_note"]
+        result["earnings"] = {"note": note, "warn": note.startswith("⚠")}
+    return result
+
+
 def main() -> None:
     """ユニバースを機械条件にかけ、候補を score 順で表示する。"""
     ap = argparse.ArgumentParser(description="株式候補の機械スクリーニング")
@@ -217,11 +256,16 @@ def main() -> None:
     if not args.json:
         print(held_summary(held, args.include_held))
     candidates = []
+    failures = []
     for ticker, market in universe:
         try:
             row = screen_one(ticker, market)
         except Exception as e:  # 1 銘柄の失敗で全体を止めない
-            print(f"  [warn] {ticker}: {str(e)[:100]}")
+            message = str(e)[:100]
+            failures.append({"ticker": ticker, "message": message})
+            # JSONモードでは標準出力をJSONだけにし、警告は構造化データへ入れる
+            if not args.json:
+                print(f"  [warn] {ticker}: {message}")
             continue
         if row:
             candidates.append(row)
@@ -233,7 +277,10 @@ def main() -> None:
 
     if args.json:
         print(json.dumps({
-            "screened": len(universe),
+            "universe": len(universe),
+            "market": args.market,
+            "failures": len(failures),
+            "failure_details": failures,
             # 銘柄そのものは出さない (public リポジトリに貼られうる出力のため)。
             # 除外が効いていたかを件数で確認できるだけにする
             "held": {
@@ -243,7 +290,7 @@ def main() -> None:
                 "executions_applied": None if held is None else held.executions_applied,
                 "journal_warnings": [] if held is None else held.warnings,
             },
-            "candidates": candidates,
+            "candidates": [json_candidate(row) for row in candidates],
             "params": {
                 "min_move_in_atr": MIN_MOVE_IN_ATR,
                 "min_break_in_atr": MIN_BREAK_IN_ATR,
@@ -253,7 +300,10 @@ def main() -> None:
         }, indent=1, default=str, ensure_ascii=False))
         return
 
-    print(f"母集団 {len(universe)} 銘柄 (market={args.market})")
+    print(
+        f"母集団 {len(universe)} 銘柄 (market={args.market}) "
+        f"/ 取得失敗 {len(failures)} 件"
+    )
     if not candidates:
         # 該当なしは異常ではない。埋め草の候補を出さないための正常な出力
         print("\n候補なし。無理に候補を作らないこと。")

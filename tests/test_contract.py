@@ -336,6 +336,37 @@ def test_candidate_range_cannot_be_reversed() -> None:
         validate(base_data(candidates=[cand]))
 
 
+def test_candidate_market_must_match_a_single_market_screen() -> None:
+    with pytest.raises(ValueError, match="screen.market"):
+        validate(
+            base_data(
+                screen={"universe": 25, "market": "jp", "failures": 0},
+                candidates=[candidate(market="us")],
+            )
+        )
+
+    validate(
+        base_data(
+            screen={"universe": 25, "market": "all", "failures": 0},
+            candidates=[candidate(market="us")],
+        )
+    )
+
+
+def test_candidate_position_percent_must_match_price_and_range() -> None:
+    cand = candidate()
+    cand["range"]["pos_pct"] = 1.1725
+    with pytest.raises(ValueError, match="pos_pct"):
+        validate(base_data(candidates=[cand]))
+
+    cand["range"]["pos_pct"] = 117.7
+    validate(base_data(candidates=[cand]))
+
+    cand["range"]["pos_pct"] = 117.76
+    with pytest.raises(ValueError, match="pos_pct"):
+        validate(base_data(candidates=[cand]))
+
+
 @pytest.mark.parametrize(
     ("path", "value"),
     [

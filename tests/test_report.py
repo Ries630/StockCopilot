@@ -86,7 +86,7 @@ def candidate(**over) -> dict:
         "change_pct": 3.2,
         "score_atr": 1.4,
         "pass_reason": "20 日レンジを上に突破 (ATR 0.5 倍)",
-        "range": {"low": 100.0, "high": 120.0, "pos_pct": 105},
+        "range": {"low": 100.0, "high": 120.0, "pos_pct": 117.25},
         "atr_pct": 2.4,
         "verdict": "買い",
         "signals": {"weekly": "good", "daily": "good", "overheat": "warn", "volume": "good"},

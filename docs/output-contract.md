@@ -105,6 +105,16 @@ ETF と個別株は `lib/datasource.py` の `fetch_instrument_type()` で切り�
   「レンジの端に近い」は状態であって事象ではないので条件に入っていない。候補は必ず
   「何かが起きた」銘柄である（→ [ADR-0011](adr/0011-event-based-screen-thresholds.md)）
 
+### JSON出力
+
+`--json`では標準出力にJSONだけを出す。母集団、市場、取得失敗数、失敗内容を
+`universe` / `market` / `failures` / `failure_details`へ入れる。候補の機械データは
+中間表現と同じキー・単位へ決定的に変換する。特に内部値`range_pos`は比率だが、
+JSONの`range.pos_pct`は100倍した百分率である。
+
+取得例外の警告をJSONの前へ混ぜない。`failure_details`を読み、`failures`件を
+「判定できなかった」として報告する。
+
 ### 保有除外の内訳
 
 冒頭に次のいずれかが出る（→ [ADR-0010](adr/0010-three-layer-universe.md)）。

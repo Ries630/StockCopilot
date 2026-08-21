@@ -23,7 +23,8 @@ LLMの判断・シナリオ・散文 ──────┘         │
                                           └→ notify.py → Slack（後続PR）
 ```
 
-- 価格・指標・score・決算注記はスクリプトの出力を加工せず移す
+- 価格・指標・score・決算注記は`screen.py --json`が中間表現と同じキー・単位へ
+  決定的に変換する。LLMは値や単位を変えずに合流させる
 - 判断と散文はLLMが書く。判断ラベルの意味は[`journal/README.md`](../journal/README.md)が正
 - `reports/`には保有情報が入るため、追跡・公開しない（→
   [ADR-0008](adr/0008-no-holdings-in-repo.md)）
@@ -59,6 +60,7 @@ LLMの判断・シナリオ・散文 ──────┘         │
 `screen`
 : 実際に調べた母集団、市場、取得失敗数。取得失敗は「条件を満たさなかった」のではなく
 「判定できなかった」ので、候補ゼロと分けて表示する。
+`screen.market`が`all`以外なら、すべての候補の`market`が一致しなければならない。
 
 `summary` / `assumptions` / `warnings`
 : 総括、確認を取らずに置いた前提、取得・解釈上の警告。空白だけの文は情報がないため許さない。
@@ -82,7 +84,8 @@ LLMの判断・シナリオ・散文 ──────┘         │
 - `market`は候補を抽出した市場、`currency`は表示通貨
 - `score_atr`と`pass_reason`は`screen.py`が返した値を移す
 - `range`は直前20日レンジの安値・高値と、その中での終値位置。終値位置はレンジ外なら
-  0〜100%を超えてよい
+  0〜100%を超えてよい。`pos_pct`は`screen.py --json`が元の比率を100倍して出力し、
+  `price`・`low`・`high`から求めた値と0.5ポイント以内で一致する必要がある
 - `atr_pct`、`turnover`、`levels`、`closes`、`earnings`は取得できる場合だけ入れる
 - `prose.strong`と`prose.weak`は強弱の根拠、`prose.check`は次に確認する条件
 

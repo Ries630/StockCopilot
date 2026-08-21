@@ -6,6 +6,7 @@
 """
 
 import json
+import math
 import pathlib
 from collections.abc import Iterable
 
@@ -91,14 +92,14 @@ def _validate_actionable_consistency(item: dict, where: str) -> None:
 
 
 def _validate_range(candidate: dict, where: str) -> None:
-    """候補の20日レンジが逆転していないことを検証する。
+    """候補の20日レンジと終値位置が矛盾しないことを検証する。
 
     Args:
         candidate: 構造検証済みのCandidate。
         where: エラー文に出す位置。
 
     Raises:
-        ValueError: `range.low`が`range.high`を上回る場合。
+        ValueError: レンジが逆転しているか、終値位置と価格が矛盾する場合。
     """
     low = candidate["range"]["low"]
     high = candidate["range"]["high"]
@@ -106,6 +107,31 @@ def _validate_range(candidate: dict, where: str) -> None:
         raise ValueError(
             f"{where}.range: low {low!r} が high {high!r} を上回っている "
             "(docs/report-contract.md)"
+        )
+    expected = 50.0 if low == high else (candidate["price"] - low) / (high - low) * 100
+    actual = candidate["range"]["pos_pct"]
+    if not math.isclose(actual, expected, rel_tol=0.0, abs_tol=0.5):
+        raise ValueError(
+            f"{where}.range.pos_pct: {actual!r} は price / low / high から求めた "
+            f"{expected:.2f}% と一致しない (許容差 0.5 ポイント / docs/report-contract.md)"
+        )
+
+
+def _validate_candidate_market(candidate: dict, screen_market: str, where: str) -> None:
+    """候補市場がスクリーニング範囲と一致することを検証する。
+
+    Args:
+        candidate: 構造検証済みのCandidate。
+        screen_market: `screen.market`。
+        where: エラー文に出す位置。
+
+    Raises:
+        ValueError: 単一市場の結果へ別市場の候補が混ざっている場合。
+    """
+    if screen_market != "all" and candidate["market"] != screen_market:
+        raise ValueError(
+            f"{where}.market: {candidate['market']!r} は screen.market "
+            f"{screen_market!r} と一致しない (docs/report-contract.md)"
         )
 
 
@@ -131,6 +157,7 @@ def validate(data: dict) -> dict:
             _validate_actionable_consistency(position, f"holdings[{index}]")
     for index, candidate in enumerate(data["candidates"]):
         where = f"candidates[{index}]"
+        _validate_candidate_market(candidate, data["screen"]["market"], where)
         _validate_actionable_consistency(candidate, where)
         _validate_range(candidate, where)
 
