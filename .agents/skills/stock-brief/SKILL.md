@@ -54,6 +54,16 @@ STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォー�
 [`.agents/skills/stock-screen/SKILL.md`](../stock-screen/SKILL.md))。
 こちらもジャーナル追記は STEP 6 に回す。
 
+ただし `stock-screen` の STEP 1 は、人間向け表示ではなく次の機械出力で実行する。
+
+```bash
+uv run screen.py --json --earnings
+```
+
+この JSON は STEP 3 まで保持し、`screen` と `candidates` の機械データへそのまま合流させる。
+価格・score・ATR・レンジ位置などを人間向けの丸め出力から復元しない。市場を限定する場合も
+`--market jp` / `--market us` を加えるだけで、`--json --earnings` は外さない。
+
 **候補ゼロは正常な結果。** 埋め草の候補を作らない。
 
 ## STEP 3. 中間表現 JSON
@@ -75,7 +85,9 @@ STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
 - **自動運用口座の銘柄は `reference_only: true`** にし、`verdict` は `"—"` を入れる
 - **確定足が前回エントリと同じなら `stale_bars: true`**
 - **`signals` には色ではなく評価** (`good` / `warn` / `bad` / `unknown`) を入れる。
-  データ不足は `unknown` で、その銘柄の `verdict` は `保留` になる
+  `unknown` は実際のデータ不足にだけ使い、資金が動く判断とは併存させない。ホールド・見送り
+  など非資金移動の判断は一律に `保留` へ変えず、分析自体が判断を確立できない場合だけ
+  `保留` にする
 
 ## STEP 4. HTML レポート
 
