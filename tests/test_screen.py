@@ -163,6 +163,37 @@ def test_marginal_break_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     assert screen.screen_one("TEST", "us") is None
 
 
+def test_screen_one_records_confirmed_bar_even_without_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """候補ゼロでも、市場の確定足日は中間表現へ渡せる。"""
+    df = pd.DataFrame(
+        {"close": [499.0, 499.2]},
+        index=pd.to_datetime(["2026-08-19", "2026-08-20"]),
+    )
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
+    monkeypatch.setattr(screen, "daily_stats", lambda _df: None)
+    bars: dict[str, str] = {}
+
+    assert screen.screen_one("TEST", "us", bars) is None
+    assert bars == {"us": "2026-08-20"}
+
+
+def test_ensure_bar_dates_fills_market_missing_from_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """市場限定や全銘柄除外でも、もう一方の確定足日を独立取得する。"""
+    df = pd.DataFrame(
+        {"close": [100.0]}, index=pd.to_datetime(["2026-08-20"])
+    )
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
+    bars = {"jp": "2026-08-21"}
+
+    screen.ensure_bar_dates(bars)
+
+    assert bars == {"jp": "2026-08-21", "us": "2026-08-20"}
+
+
 def test_break_at_threshold_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     """閾値ちょうどの突破は通す (境界は通過側)。"""
     _patch_bar(monkeypatch, [501.9, 502.0])  # 499.0 + 3.0 = 0.3 ATR
@@ -279,13 +310,15 @@ def test_json_output_is_machine_readable_and_counts_failures(
         "turnover_avg20": 1_000_000_000.0,
     }
 
-    def fake_screen_one(ticker: str, market: str) -> dict:
+    def fake_screen_one(ticker: str, market: str, bars: dict[str, str]) -> dict:
+        bars[market] = "2026-08-20"
         if ticker == "FAIL":
             raise RuntimeError("取得できない")
         return good
 
     monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
     monkeypatch.setattr(screen, "screen_one", fake_screen_one)
+    monkeypatch.setattr(screen, "ensure_bar_dates", lambda bars: None)
     monkeypatch.setattr(sys, "argv", ["screen.py", "--json", "--market", "jp"])
 
     screen.main()
@@ -295,6 +328,7 @@ def test_json_output_is_machine_readable_and_counts_failures(
     parsed = json.loads(output)
     assert parsed["universe"] == 2
     assert parsed["market"] == "jp"
+    assert parsed["bars"] == {"jp": "2026-08-20"}
     assert parsed["failures"] == 1
     assert parsed["failure_details"] == [{"ticker": "FAIL", "message": "取得できない"}]
     assert parsed["candidates"][0]["market"] == "jp"

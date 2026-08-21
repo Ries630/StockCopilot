@@ -108,9 +108,11 @@ ETF と個別株は `lib/datasource.py` の `fetch_instrument_type()` で切り�
 ### JSON出力
 
 `--json`では標準出力にJSONだけを出す。母集団、市場、取得失敗数、失敗内容を
-`universe` / `market` / `failures` / `failure_details`へ入れる。候補の機械データは
-中間表現と同じキー・単位へ決定的に変換する。特に内部値`range_pos`は比率だが、
-JSONの`range.pos_pct`は100倍した百分率である。
+`universe` / `market` / `failures` / `failure_details`へ入れる。`bars`には、取得できた
+銘柄から市場ごとの最新確定足日を集約し、不足市場は探索ユニバースの代表銘柄から補う。
+それでも取得できなければ日付を推測せず、その市場のキーを省略する。候補の機械データは
+中間表現と同じキー・単位へ決定的に変換する。
+特に内部値`range_pos`は比率だが、JSONの`range.pos_pct`は100倍した百分率である。
 
 取得例外の警告をJSONの前へ混ぜない。`failure_details`を読み、`failures`件を
 「判定できなかった」として報告する。
