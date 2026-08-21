@@ -107,7 +107,7 @@ def test_quiet_day_still_posts(
     """静穏日も投稿する。
 
     何も出さないと「実行されて静穏だった」のか「実行されなかった」のかが
-    Slack だけでは区別できない (→ docs/adr/0021)。
+    Slack だけでは区別できない (→ docs/adr/0022)。
     """
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example/x")
     notify.notify(base_data(), "reports/x.html")

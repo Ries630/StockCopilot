@@ -5,7 +5,7 @@
 """中間表現 JSON を読み、夕方ブリーフの結果を Slack へ投稿する。
 
 投稿はこのスクリプトが完結させる。**LLM は Slack ツールを呼ばない**
-(→ docs/adr/0021-slack-webhook-notification.md)。理由は 2 つ:
+(→ docs/adr/0022-slack-webhook-notification.md)。理由は 2 つ:
 
 1. Slack は自分の投稿では自分に push を鳴らさない。本人 identity で投稿しても
    自己メンションは通知にならないので、アプリ identity の Incoming Webhook を使う

@@ -1,4 +1,4 @@
-# ADR-0021: Slack 通知をスクリプトの Incoming Webhook に移す
+# ADR-0022: Slack 通知をスクリプトの Incoming Webhook に移す
 
 - ステータス: 承認済み
 - 日付: 2026-08-20
