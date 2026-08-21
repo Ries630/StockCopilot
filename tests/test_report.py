@@ -348,6 +348,20 @@ def test_missing_root_display_fields_are_visible_as_unknown() -> None:
         assert key in html and "が無い" in html
 
 
+def test_missing_display_values_are_not_replaced_with_semantic_defaults() -> None:
+    """警告へ降格した値も、有効な既定値に見せない。"""
+    data = base_data(candidates=[candidate(verdict="見送り")])
+    del data["holdings_as_of"][0]["label"]
+    del data["effective_holdings"]["executions"]
+    del data["candidates"][0]["range"]["pos_pct"]
+
+    html = report.render(data)
+
+    assert "不明 2026-07-22" in html
+    assert "執行記録 不明 件" in html
+    assert "終値位置 不明" in html
+
+
 def test_missing_card_display_fields_are_visible_as_unknown() -> None:
     """カードの表示材料が欠けても判断項目が残る限りカードを描く。"""
     pos = position()
@@ -555,6 +569,21 @@ def test_no_latest_flag_skips_update(
     src = tmp_path / "2026-08-20_evening.json"
     src.write_text(json.dumps(base_data(), ensure_ascii=False), encoding="utf-8")
     run_main(monkeypatch, str(src), "--no-latest")
+    assert not (tmp_path / "latest.json").exists()
+
+
+def test_missing_date_does_not_crash_or_update_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """日付不明の表示警告では、比較不能なlatest更新だけを飛ばす。"""
+    src = tmp_path / "unknown_evening.json"
+    data = base_data()
+    del data["date"]
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    run_main(monkeypatch, str(src))
+
+    assert (tmp_path / "unknown_evening.html").exists()
     assert not (tmp_path / "latest.json").exists()
 
 

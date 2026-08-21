@@ -481,12 +481,14 @@ def range_axis(rng: dict, price, currency: str) -> str:
             f'<div class="legend"><span>{term("range20", "20日レンジ")}</span>'
             f"<span>{UNKNOWN}</span></div>"
         )
+    if rng.get("pos_pct") is None:
+        return (
+            f'<div class="legend"><span>{term("range20", "20日レンジ")} '
+            f"{money(float(rng['low']), currency)} 〜 {money(float(rng['high']), currency)}</span>"
+            f"<span>終値位置 {UNKNOWN}</span></div>"
+    )
     lo, hi = float(rng["low"]), float(rng["high"])
-    span = (hi - lo) or 1.0
-    pct = rng.get("pos_pct")
-    if pct is None and price is not None:
-        pct = (float(price) - lo) / span * 100
-    pct = float(pct if pct is not None else 50)
+    pct = float(rng["pos_pct"])
     # マーカーの座標だけを軸内に丸める。**表示する % は丸めない** —
     # レンジをどれだけ上抜けたかは候補の強さそのもので、丸めると突破の度合いが消える
     marker = max(-8.0, min(108.0, pct))
@@ -785,7 +787,7 @@ def render(data: dict) -> str:
 
     as_of_parts = []
     for a in data.get("holdings_as_of") or []:
-        text = f"{a.get('label') or '保有'} {a.get('as_of') or UNKNOWN}"
+        text = f"{a.get('label') or UNKNOWN} {a.get('as_of') or UNKNOWN}"
         if a.get("count") is not None:
             text += f" ({a['count']}銘柄)"
         as_of_parts.append(text)
@@ -851,9 +853,11 @@ def render(data: dict) -> str:
         cand_head += f" / 取得失敗 {UNKNOWN}"
     elif failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
+    executions = eff.get("executions")
+    executions = UNKNOWN if executions is None else executions
     eff_head = (
         f"{term('effective_holdings', '実効保有')} — Investment {esc(as_of)} "
-        f"+ 執行記録 {esc(eff.get('executions', 0))} 件"
+        f"+ 執行記録 {esc(executions)} 件"
     )
     ref_count = sum(1 for p in holdings if p.get("reference_only"))
     hold_head = f"保有 {len(holdings)} 銘柄"
@@ -920,7 +924,10 @@ def main() -> None:
         latest_date = ""
         if latest.exists():
             latest_date = json.loads(latest.read_text(encoding="utf-8")).get("date", "")
-        if data["date"] >= latest_date:
+        source_date = data.get("date")
+        if not source_date:
+            print(f"[report] {latest} は日付不明のため更新しない")
+        elif source_date >= latest_date:
             latest.write_text(raw, encoding="utf-8")
             print(f"[report] {latest} (次回のシリーズ分析の起点)")
         else:
