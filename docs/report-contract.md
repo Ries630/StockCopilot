@@ -35,11 +35,15 @@ LLMの判断・シナリオ・散文 ──────┘         │
 : 中間表現の互換性を示す番号。構造を互換性なく変えるときに上げる。
 
 `date` / `generated_at` / `bars`
-: 分析日、JSTの生成時刻、JP/USそれぞれの確定足日。片方の確定足日を省略すると、
-  対象市場のデータ鮮度を確認できない。
+: 分析日、JSTの生成時刻、今回取得できたJP/USそれぞれの確定足日。
+  `bar_status`が`unavailable`の市場だけは`bars`の市場キーを省略する。
 
-`stale_bars`
-: 確定足が前回エントリと同じなら`true`。同じ足を独立した観測として数えないために使う。
+`bar_status`
+: JP/USそれぞれの前回確定足日と更新状態。`updated`は前回より進んだ、`unchanged`は
+  同じ、`initial`は比較対象が無い初回、`unavailable`は今回の確定足日を取得できなかった
+  状態を示す。`updated`と`initial`だけを新しい市場観測として分析する。
+  `unchanged`と`unavailable`は前回の判断・水準・トリガーを引き継ぐ。
+  → [ADR-0029](adr/0029-market-specific-bar-observation.md)
 
 `holdings_as_of`
 : 資産クラスごとの保有データ基準日。配列を空にするとデータ鮮度を確認できない。
@@ -189,8 +193,8 @@ severityは次の2段階（→ [ADR-0027](adr/0027-contract-validation-severity.
 
 表示項目として警告へ降格できる欠落は次のとおり。ここに無いSchema違反は例外にする。
 
-- トップレベル: `date`、`generated_at`、`bars`、`holdings_as_of`、`screen`、`summary`
-- `bars.jp` / `bars.us`、`holdings_as_of[].as_of` / `label`
+- トップレベル: `date`、`generated_at`、`holdings_as_of`、`screen`、`summary`
+- `holdings_as_of[].as_of` / `label`
 - `effective_holdings.executions`、`screen.universe` / `market` / `failures`
 - 保有: `prose`、`prose.change` / `scenario`
 - 候補: `score_atr`、`pass_reason`、`range`とその3要素、`prose`、`prose.check`

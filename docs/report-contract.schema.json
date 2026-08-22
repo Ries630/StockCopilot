@@ -5,15 +5,15 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema", "date", "generated_at", "bars", "holdings_as_of",
+    "schema", "date", "generated_at", "bars", "bar_status", "holdings_as_of",
     "effective_holdings", "holdings", "candidates", "screen", "summary"
   ],
   "properties": {
-    "schema": { "type": "integer", "const": 1 },
+    "schema": { "type": "integer", "const": 2 },
     "date": { "$ref": "#/$defs/date" },
     "generated_at": { "$ref": "#/$defs/jstDateTime" },
     "bars": { "$ref": "#/$defs/bars" },
-    "stale_bars": { "type": "boolean" },
+    "bar_status": { "$ref": "#/$defs/barStatus" },
     "holdings_as_of": {
       "type": "array", "minItems": 1,
       "items": { "$ref": "#/$defs/holdingAsOf" }
@@ -40,10 +40,25 @@
     },
     "bars": {
       "type": "object", "additionalProperties": false,
-      "required": ["jp", "us"],
       "properties": {
         "jp": { "$ref": "#/$defs/date" },
         "us": { "$ref": "#/$defs/date" }
+      }
+    },
+    "barStatus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["jp", "us"],
+      "properties": {
+        "jp": { "$ref": "#/$defs/marketBarStatus" },
+        "us": { "$ref": "#/$defs/marketBarStatus" }
+      }
+    },
+    "marketBarStatus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["updated", "unchanged", "initial", "unavailable"] },
+        "previous": { "$ref": "#/$defs/date" }
       }
     },
     "holdingAsOf": {
