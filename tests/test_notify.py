@@ -176,11 +176,10 @@ def test_verdict_tally_marks_reference_only() -> None:
     assert notify.verdict_tally(items) == "ホールド 1 / 保留 1 / 対象外 1"
 
 
-def test_warnings_and_stale_bars_are_included() -> None:
-    data = base_data(stale_bars=True, warnings=["取得に失敗した銘柄が 1 件"])
+def test_warnings_are_included() -> None:
+    data = base_data(warnings=["取得に失敗した銘柄が 1 件"])
     _, blocks, _ = notify.build_message(data, "reports/x.html", "")
     body = text_of({"blocks": blocks})
-    assert "確定足は前回から変わらず" in body
     assert "取得に失敗した銘柄が 1 件" in body
 
 

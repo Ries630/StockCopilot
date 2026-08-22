@@ -5,6 +5,7 @@
 組み合わせ規則と、表示項目の欠落だけを警告へ降格するseverityを追加する。
 """
 
+import datetime as dt
 import json
 import math
 import pathlib
@@ -30,7 +31,7 @@ BAR_MARKETS = ("jp", "us")
 """確定足の日付を表示する市場。"""
 
 ROOT_DISPLAY_KEYS = frozenset(
-    {"date", "generated_at", "bars", "holdings_as_of", "screen", "summary"}
+    {"date", "generated_at", "holdings_as_of", "screen", "summary"}
 )
 """トップレベルで欠落を警告へ降格できる表示項目。"""
 
@@ -136,8 +137,6 @@ def _is_display_gap(error: ValidationError) -> bool:
         return False
     if path == ():
         return missing in ROOT_DISPLAY_KEYS
-    if path == ("bars",):
-        return missing in BAR_MARKETS
     if path == ("screen",):
         return missing in {"universe", "market", "failures"}
     if path == ("effective_holdings",):
@@ -242,6 +241,43 @@ def _validate_candidate_market(candidate: dict, screen_market: str, where: str) 
         )
 
 
+def _validate_bar_status(data: dict) -> None:
+    """確定足日と市場別更新状態の組み合わせを検証する。
+
+    Args:
+        data: 構造検証済みの中間表現。
+
+    Raises:
+        KeyError: 状態に必要な日付が無い場合。
+        ValueError: 状態と日付の関係が矛盾する場合。
+    """
+    bars = data["bars"]
+    for market in BAR_MARKETS:
+        item = data["bar_status"][market]
+        status = item["status"]
+        current = bars.get(market)
+        previous = item.get("previous")
+        where = f"bar_status.{market}"
+        if status == "unavailable":
+            if current is not None:
+                raise ValueError(f"{where}: unavailable なのに bars.{market} がある")
+            continue
+        if current is None:
+            raise KeyError(f"{where}: {status} には bars.{market} が必要")
+        if status == "initial":
+            if previous is not None:
+                raise ValueError(f"{where}: initial に previous は置かない")
+            continue
+        if previous is None:
+            raise KeyError(f"{where}: {status} には previous が必要")
+        current_day = dt.date.fromisoformat(current)
+        previous_day = dt.date.fromisoformat(previous)
+        if status == "unchanged" and current_day != previous_day:
+            raise ValueError(f"{where}: unchanged だが現在日と前回日が一致しない")
+        if status == "updated" and current_day <= previous_day:
+            raise ValueError(f"{where}: updated だが現在日が前回日より新しくない")
+
+
 def validate(data: dict) -> list[str]:
     """中間表現の構造と業務上の組み合わせを検証する。
 
@@ -261,6 +297,8 @@ def validate(data: dict) -> list[str]:
             warnings.append(_display_warning(error))
             continue
         _raise_contract_error(error)
+
+    _validate_bar_status(data)
 
     for index, position in enumerate(data["holdings"]):
         if not position.get("reference_only"):

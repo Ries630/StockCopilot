@@ -97,6 +97,7 @@ ADR の役目。
 | [0026](0026-centralised-contract-validation.md) | 中間表現の検証を集約し、severityを2段階にする | 廃止（ADR-0027により置換） |
 | [0027](0027-contract-validation-severity.md) | JSON Schema検証に表示欠落のseverityを重ねる | 承認済み |
 | [0028](0028-standalone-analysis-journal-history.md) | 単体分析はジャーナルに履歴を残す | 承認済み |
+| [0029](0029-market-specific-bar-observation.md) | 確定足の更新状態を市場別に判定し、取得不能市場だけ停止する | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）
 

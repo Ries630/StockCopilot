@@ -26,10 +26,14 @@ def base_data(**over) -> dict:
         中間表現 dict。
     """
     data = {
-        "schema": 1,
+        "schema": 2,
         "date": "2026-08-20",
         "generated_at": "2026-08-20T17:30:00+09:00",
         "bars": {"jp": "2026-08-20", "us": "2026-08-19"},
+        "bar_status": {
+            "jp": {"status": "updated", "previous": "2026-08-19"},
+            "us": {"status": "updated", "previous": "2026-08-18"},
+        },
         "holdings_as_of": [{"as_of": "2026-07-22", "label": "株式", "count": 12}],
         "effective_holdings": {"executions": 0, "lines": ["執行記録なし (as_of 時点のまま)"]},
         "holdings": [],
@@ -340,7 +344,7 @@ def test_missing_universe_or_market_is_visible_as_unknown() -> None:
 
 def test_missing_root_display_fields_are_visible_as_unknown() -> None:
     """見出しや総括の欠落でも処理を続け、警告と不明表示を残す。"""
-    for key in ("date", "generated_at", "summary", "bars", "holdings_as_of"):
+    for key in ("date", "generated_at", "summary", "holdings_as_of"):
         data = base_data()
         del data[key]
         html = report.render(data)
@@ -379,9 +383,9 @@ def test_missing_card_display_fields_are_visible_as_unknown() -> None:
 
 
 def test_schema_is_validated() -> None:
-    """未対応バージョンを v1 として描かない。"""
+    """旧schemaを v2 として描かない。"""
     with pytest.raises(ValueError, match="schema"):
-        report.render(base_data(schema=2))
+        report.render(base_data(schema=1))
     with pytest.raises(KeyError, match="schema"):
         broken = base_data()
         del broken["schema"]
@@ -400,9 +404,9 @@ def test_names_are_html_escaped() -> None:
     assert "&lt;script&gt;" in html
 
 
-def test_stale_bars_are_surfaced() -> None:
-    html = report.render(base_data(stale_bars=True))
-    assert "独立した観測として数えない" in html
+def test_legacy_stale_bars_is_rejected() -> None:
+    with pytest.raises(ValueError, match="stale_bars"):
+        report.render(base_data(stale_bars=True))
 
 
 def test_money_formats_per_currency() -> None:

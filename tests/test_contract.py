@@ -30,7 +30,6 @@ def full_data() -> dict:
     )
     cand["signals"]["labels"] = {"daily": "RSI 62"}
     return base_data(
-        stale_bars=False,
         market_tone={"label": "中立", "prose": "方向感は限定的。"},
         holdings=[pos],
         candidates=[cand],
@@ -73,6 +72,8 @@ def test_decision_required_keys_are_rejected_when_removed() -> None:
     data = full_data()
     cases = (
         (data, "schema"),
+        (data, "bars"),
+        (data, "bar_status"),
         (data, "effective_holdings"),
         (data, "holdings"),
         (data, "candidates"),
@@ -98,7 +99,6 @@ def test_display_required_keys_warn_when_removed() -> None:
     cases = (
         (data, "date"),
         (data, "generated_at"),
-        (data, "bars"),
         (data, "holdings_as_of"),
         (data, "screen"),
         (data, "summary"),
@@ -120,7 +120,6 @@ def test_nested_display_required_keys_warn_when_removed() -> None:
     """表示オブジェクト内の欠落も位置付きの警告にする。"""
     data = full_data()
     cases = (
-        (data["bars"], "jp"),
         (data["holdings_as_of"][0], "as_of"),
         (data["screen"], "failures"),
         (data["holdings"][0]["prose"], "change"),
@@ -139,6 +138,30 @@ def test_nested_display_required_keys_warn_when_removed() -> None:
 def test_empty_holdings_as_of_warns() -> None:
     warnings = validate(base_data(holdings_as_of=[]))
     assert any("holdings_as_of" in warning for warning in warnings)
+
+
+def test_bar_status_requires_consistent_dates() -> None:
+    data = base_data()
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-19"}
+    with pytest.raises(ValueError, match="一致しない"):
+        validate(data)
+
+    data = base_data()
+    data["bar_status"]["jp"] = {"status": "initial", "previous": "2026-08-19"}
+    with pytest.raises(ValueError, match="previous"):
+        validate(data)
+
+    data = base_data()
+    data["bar_status"]["jp"] = {"status": "unavailable", "previous": "2026-08-19"}
+    with pytest.raises(ValueError, match="bars.jp"):
+        validate(data)
+
+
+def test_unavailable_allows_missing_market_bar() -> None:
+    data = base_data()
+    del data["bars"]["jp"]
+    data["bar_status"]["jp"] = {"status": "unavailable", "previous": "2026-08-19"}
+    validate(data)
 
 
 def test_buy_candidate_cannot_downgrade_missing_prose() -> None:
