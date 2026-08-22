@@ -8,7 +8,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from lib.contract import SCHEMA, validate
-from tests.test_report import base_data, candidate, market_screen, position
+from tests.test_report import base_data, candidate, holding_state, market_screen, position
 
 
 def full_data() -> dict:
@@ -79,6 +79,7 @@ def test_decision_required_keys_are_rejected_when_removed() -> None:
         (data, "candidates"),
         (data["effective_holdings"], "lines"),
         (data["holdings"][0], "ticker"),
+        (data["holdings"][0], "analysis_status"),
         (data["holdings"][0], "signals"),
         (data["holdings"][0]["signals"], "weekly"),
         (data["candidates"][0], "market"),
@@ -160,6 +161,25 @@ def test_unavailable_allows_missing_market_bar() -> None:
     del data["bars"]["jp"]
     data["bar_status"]["jp"] = {"status": "unavailable", "previous": "2026-08-19"}
     validate(data)
+
+
+def test_inactive_market_allows_current_holding_without_analysis() -> None:
+    data = base_data(holdings=[holding_state()])
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    validate(data)
+
+
+def test_active_market_requires_current_holding_analysis() -> None:
+    with pytest.raises(ValueError, match="analysis_status.*current"):
+        validate(base_data(holdings=[holding_state()]))
+
+
+def test_analysis_unavailable_rejects_analysis_fields() -> None:
+    state = holding_state(price=1234)
+    data = base_data(holdings=[state])
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    with pytest.raises(ValueError, match="分析項目"):
+        validate(data)
 
 
 def test_buy_candidate_cannot_downgrade_missing_prose() -> None:

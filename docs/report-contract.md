@@ -60,6 +60,11 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 `holdings` / `candidates`
 : 保有分析とスクリーニング候補。空配列は正常だが、キーの省略は書き漏らしなので許さない。
+  最終`holdings`の集合とidentity/stateは今回の実効保有を正とし、市場依存の分析だけを
+  今回または前回から選ぶ。市場別合流では候補の`market`を使い、保有は
+  `lib/market_observation.py`の`market_from_currency()`でJPY→JP、USD→USと決定する。
+  この対応を他の場所へ複製しない。
+  `market_tone`は市場別合流の対象にせず、今回値を維持する。
 
 `screen`
 : JP/US別の母集団と評価結果。`evaluated`は条件を判定できた件数、`failures`は取得例外、
@@ -77,6 +82,12 @@ LLMの判断・シナリオ・散文 ──────┘         │
 - `name`は日本株では必須。米国株では取得できない場合に省略できる
 - `shares`は実効保有株数、`price`は確定足終値で、指定する場合はいずれも正値。
   `change_pct`は前回エントリ比なので負値を取り得る
+- `analysis_status`は分析の由来。`current`は今回更新、`carried`は前回分析の継続、
+  `unavailable`は現在保有しているが引き継げる分析が無い状態。`unavailable`では判断・価格・
+  水準・シグナル・散文を入れない
+- `ticker` / `name` / `shares` / `currency` / `reference_only`は現在の実効保有を正とする。
+  その他のPosition項目は市場依存の分析であり、`unchanged` / `unavailable`市場では同一銘柄の
+  前回分析から引き継ぐ
 - `scenario`は前進・停滞・否定接近のいずれか
 - `levels`は支持・抵抗・無効化水準、`closes`は古い順の終値。価格水準はすべて正値
 - `earnings`は決算注記。決算情報が無い場合はオブジェクトごと省略する
@@ -84,7 +95,16 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 `reference_only: true`は自動運用口座など判断対象外の銘柄を示す。この場合、入力の
 `verdict`は省略するか`"—"`にし、HTMLでは`"—"`を表示する。それ以外の保有銘柄には
-判断ラベルが必要である。
+分析がある場合だけ判断ラベルが必要である。
+
+## 市場別表示の意味
+
+- 「候補 N件」「保有 N銘柄」は合流後の現在総数
+- 「今回更新 N件」は`updated` / `initial`市場に属する件数
+- 「候補ゼロ」は`updated` / `initial`かつ`evaluated > 0`かつ`matched == 0`の市場だけ
+- `unchanged`は「新規スクリーニングなし（確定足は前回と同じ）」
+- `unavailable`は「新規スクリーニングなし（確定足日を取得不能）」
+- 更新市場でも評価可能な銘柄が0件なら「候補判定なし」とし、候補ゼロには数えない
 
 ## 候補（Candidate）の意味
 

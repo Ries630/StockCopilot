@@ -55,7 +55,9 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `lib/journal.py` — ジャーナルの `### 執行` を読むパーサ (約定日 / 銘柄 / 残株数の 3 項目のみ)。
   書式の正は `journal/README.md`
 - `lib/market_observation.py` — 前回と今回の確定足を市場別に比較し、更新市場だけを分析して
-  停滞・取得不能市場を前回結果から引き継ぐ → [ADR-0029](docs/adr/0029-market-specific-bar-observation.md)
+  停滞・取得不能市場を前回結果から引き継ぐ。保有は現在のidentity/stateを正にして分析だけを
+  合流する → [ADR-0029](docs/adr/0029-market-specific-bar-observation.md) /
+  [ADR-0030](docs/adr/0030-current-holding-state-with-carried-analysis.md)
 - `config/universe.py` — 探索ユニバースとパラメータ。母集団は
   ウォッチリスト / 探索ユニバース / 保有 (除外) の 3 層
   → [ADR-0010](docs/adr/0010-three-layer-universe.md)。
@@ -81,6 +83,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
 - `lib/verdicts.py` — 判断ラベルの定義と「資金が動く判断」の判定。
   `ACTIONABLE_VERDICTS` が **Slack のメンションを鳴らす条件の正** (買い / 積増し / 売却)
+- `finalize_report.py` — 市場別の更新状態に従って今回結果と前回結果を決定的に合流し、
+  中間表現を確定する。市場判定と合流規則は `lib/market_observation.py` に集約する
 - `report.py` — 中間表現 → 自己完結 HTML (`reports/*.html`)。判断も指標計算もしない。
   外部リソースを読み込まない。**用語の説明は本文に書かず `GLOSSARY` のポップオーバーに置く**
   → [ADR-0024](docs/adr/0024-glossary-popovers.md)

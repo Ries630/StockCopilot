@@ -17,6 +17,26 @@ MARKETS = ("jp", "us")
 ACTIVE_STATUSES = frozenset({"updated", "initial"})
 """新しい市場観測として分析する状態。"""
 
+HOLDING_STATE_FIELDS = frozenset(
+    {"ticker", "name", "shares", "currency", "reference_only"}
+)
+"""常に今回の実効保有を正とするidentity/stateフィールド。"""
+
+HOLDING_ANALYSIS_FIELDS = frozenset(
+    {
+        "price",
+        "change_pct",
+        "verdict",
+        "scenario",
+        "signals",
+        "levels",
+        "closes",
+        "earnings",
+        "prose",
+    }
+)
+"""市場状態に応じて今回または前回から選ぶ分析フィールド。"""
+
 _ENTRY_RE = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\b")
 _DATE_TOKEN = r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2})"
 _BOTH_RE = re.compile(rf"JP\s*[・/]\s*US\s*とも\s*{_DATE_TOKEN}", re.IGNORECASE)
@@ -99,6 +119,56 @@ def active_markets(bar_status: dict[str, dict]) -> set[str]:
     }
 
 
+def candidate_zero_markets(screen: dict[str, dict], bar_status: dict[str, dict]) -> list[str]:
+    """候補ゼロを有効な観測として数えられる市場を返す。
+
+    Args:
+        screen: 市場別のスクリーニング件数。
+        bar_status: 市場別の確定足更新状態。
+
+    Returns:
+        更新市場かつ1件以上を評価し、通過が0件だった市場。
+    """
+    active = active_markets(bar_status)
+    return [
+        market
+        for market in MARKETS
+        if market in active
+        and screen[market]["evaluated"] > 0
+        and screen[market]["matched"] == 0
+    ]
+
+
+def candidate_observation_labels(
+    screen: dict[str, dict], bar_status: dict[str, dict]
+) -> dict[str, str]:
+    """市場別の候補観測を共通の表示文言へ変換する。
+
+    Args:
+        screen: 市場別のスクリーニング件数。
+        bar_status: 市場別の確定足更新状態。
+
+    Returns:
+        市場名をキー、表示文言を値にしたdict。
+    """
+    labels: dict[str, str] = {}
+    for market in MARKETS:
+        status = bar_status[market]["status"]
+        stats = screen[market]
+        prefix = market.upper()
+        if status == "unchanged":
+            labels[market] = f"{prefix}: 新規スクリーニングなし（確定足は前回と同じ）"
+        elif status == "unavailable":
+            labels[market] = f"{prefix}: 新規スクリーニングなし（確定足日を取得不能）"
+        elif stats["evaluated"] == 0:
+            labels[market] = f"{prefix}: 候補判定なし（評価可能な銘柄なし）"
+        elif stats["matched"] == 0:
+            labels[market] = f"{prefix}: 候補ゼロ（{stats['evaluated']}銘柄を評価）"
+        else:
+            labels[market] = f"{prefix}: 今回更新 {stats['selected']}件"
+    return labels
+
+
 def merge_market_results(previous: dict | None, current: dict, bar_status: dict[str, dict]) -> dict:
     """停滞・取得不能市場の判断を前回結果から引き継ぐ。
 
@@ -115,12 +185,12 @@ def merge_market_results(previous: dict | None, current: dict, bar_status: dict[
     """
     merged = dict(current)
     old = previous or {}
-    merged["holdings"] = _merge_collection(
-        old.get("holdings") or [], current.get("holdings") or [], bar_status, _holding_market
-    )
+    old_holdings = old["holdings"] if old else []
+    old_candidates = old["candidates"] if old else []
+    merged["holdings"] = _merge_holdings(old_holdings, current["holdings"], bar_status)
     merged["candidates"] = _merge_collection(
-        old.get("candidates") or [],
-        current.get("candidates") or [],
+        old_candidates,
+        current["candidates"],
         bar_status,
         lambda item: item["market"],
     )
@@ -148,7 +218,18 @@ def load_previous_bars(latest_path: Path, journal_path: Path) -> dict[str, str]:
     bars = data.get("bars")
     if not isinstance(bars, dict):
         raise ValueError(f"{latest_path}: bars を読めない")
-    return {market: value for market in MARKETS if isinstance((value := bars.get(market)), str)}
+    status = data.get("bar_status")
+    result: dict[str, str] = {}
+    for market in MARKETS:
+        value = bars.get(market)
+        if isinstance(value, str):
+            result[market] = value
+            continue
+        if isinstance(status, dict):
+            previous = (status.get(market) or {}).get("previous")
+            if isinstance(previous, str):
+                result[market] = previous
+    return result
 
 
 def parse_legacy_bar_dates(text: str) -> dict[str, str]:
@@ -186,6 +267,55 @@ def _merge_collection(
         source = current if market in active else previous
         result.extend(dict(item) for item in source if market_of(item) == market)
     return result
+
+
+def _merge_holdings(
+    previous: list[dict], current: list[dict], bar_status: dict[str, dict]
+) -> list[dict]:
+    """今回の保有集合・属性を正にして、市場別に分析だけを選ぶ。"""
+    active = active_markets(bar_status)
+    previous_by_key = {_holding_key(item): item for item in previous}
+    result: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for item in current:
+        key = _holding_key(item)
+        if key in seen:
+            raise ValueError(f"holdings: 同じ保有が重複している: {item['ticker']}")
+        seen.add(key)
+        market = _holding_market(item)
+        if market in active:
+            result.append(dict(item))
+            continue
+
+        state = {name: item[name] for name in HOLDING_STATE_FIELDS if name in item}
+        prior = previous_by_key.get(key)
+        if prior is None or not _can_carry_analysis(prior, item):
+            state["analysis_status"] = "unavailable"
+            result.append(state)
+            continue
+
+        state.update(
+            {name: prior[name] for name in HOLDING_ANALYSIS_FIELDS if name in prior}
+        )
+        state["analysis_status"] = "carried"
+        if item.get("reference_only"):
+            state["verdict"] = "—"
+        result.append(state)
+    return result
+
+
+def _holding_key(item: dict) -> tuple[str, str]:
+    """保有を同一銘柄として突き合わせるキーを返す。"""
+    return item["ticker"].upper(), item["currency"]
+
+
+def _can_carry_analysis(previous: dict, current: dict) -> bool:
+    """前回分析を今回の保有状態へ安全に引き継げるか判定する。"""
+    if previous.get("analysis_status") == "unavailable":
+        return False
+    if not current.get("reference_only") and previous.get("verdict") in {None, "—"}:
+        return False
+    return all(name in previous for name in ("price", "signals", "prose"))
 
 
 def _holding_market(item: dict) -> str:

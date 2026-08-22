@@ -30,7 +30,8 @@ import json
 import pathlib
 
 from lib.contract import BAR_MARKETS, validate
-from lib.verdicts import NOT_APPLICABLE, actionable_items
+from lib.market_observation import active_markets, candidate_observation_labels
+from lib.verdicts import NOT_APPLICABLE, actionable_items, observed_items
 
 # 4 軸シグナルの評価 → 配色と表示ラベル。
 # 中間表現には色ではなく評価 (good/warn/bad/unknown) が入る。軸ごとに「良い」の
@@ -44,6 +45,13 @@ SIGNAL_STYLE = {
 
 # 表示項目が欠けたとき、空欄や既定値にせず劣化を明示する
 UNKNOWN = "不明"
+
+BAR_STATUS_LABELS = {
+    "updated": "更新",
+    "unchanged": "前回と同じ",
+    "initial": "初回",
+    "unavailable": "取得不能",
+}
 
 # シグナルの軸名 → 見出し。順序が表示順になる
 SIGNAL_AXES = (
@@ -622,6 +630,15 @@ def position_card(pos: dict) -> str:
     ticker = pos["ticker"]
     currency = pos["currency"]
     name = pos.get("name") or ""
+    if pos["analysis_status"] == "unavailable":
+        return (
+            '<div class="card">'
+            f'<div class="top"><div><h3>{esc(ticker)} {esc(name)}</h3>'
+            f'<div class="sub num">{esc(shares_text(pos.get("shares")))}</div></div>'
+            '<div><span class="badge" style="color:var(--muted)">分析なし</span></div></div>'
+            '<div class="prose"><p>現在の保有状態。市場未更新かつ引き継げる前回分析がないため、'
+            '判断・水準・トリガーは表示しない。</p></div></div>'
+        )
     price = require(pos, "price", where)
     prose = pos.get("prose") or {}
     # 判断対象外の銘柄だけが「—」を持つ。それ以外で verdict が欠けていたら落とす。
@@ -635,6 +652,9 @@ def position_card(pos: dict) -> str:
         scenario = (
             f'<span class="chip">{term("scenario", "シナリオ")} {esc(pos["scenario"])}</span>'
         )
+    analysis_note = ""
+    if pos["analysis_status"] == "carried":
+        analysis_note = '<span class="chip">前回分析を継続</span>'
 
     reasons = ""
     if prose.get("reasons"):
@@ -652,7 +672,7 @@ def position_card(pos: dict) -> str:
         f"<div>{verdict_badge(verdict)}</div></div>"
         f'<div class="price num" style="margin-top:6px">{money(price, currency)}'
         f'<span class="sub num"> {signed_pct(pos.get("change_pct"))}</span></div>'
-        f'<div style="margin-top:6px">{scenario}</div>'
+        f'<div style="margin-top:6px">{scenario}{analysis_note}</div>'
         f"{signal_bars(pos['signals'])}"
         f"{sparkline(pos.get('closes') or [])}"
         f"{level_axis(price, pos.get('levels') or {}, currency)}"
@@ -730,9 +750,14 @@ def hero(data: dict) -> str:
     """
     items = actionable_items(data)
     if not items:
+        if not active_markets(data["bar_status"]):
+            return (
+                '<div class="hero quiet"><div class="lead">今回、新規市場観測なし</div>'
+                '<div class="sub">前回結果を継続。候補ゼロとしては数えない</div></div>'
+            )
         return (
-            '<div class="hero quiet"><div class="lead">本日、資金が動く判断なし</div>'
-            '<div class="sub">候補ゼロ・ホールドのみは正常な結果。埋め草の候補は作らない</div>'
+            '<div class="hero quiet"><div class="lead">今回更新分に資金が動く判断なし</div>'
+            '<div class="sub">更新市場の観測結果。埋め草の候補は作らない</div>'
             "</div>"
         )
     rows = "".join(
@@ -782,6 +807,7 @@ def render(data: dict) -> str:
 
     date = data.get("date") or UNKNOWN
     bars = data.get("bars") or {}
+    bar_status = data["bar_status"]
     screen = data.get("screen") or {}
     eff = require(data, "effective_holdings", "root")
 
@@ -793,10 +819,12 @@ def render(data: dict) -> str:
         as_of_parts.append(text)
     as_of = " / ".join(as_of_parts) or UNKNOWN
     bar_line = " / ".join(
-        f"{market.upper()} {bars.get(market) or UNKNOWN}" for market in BAR_MARKETS
+        f"{market.upper()} {bars.get(market) or UNKNOWN} "
+        f"({BAR_STATUS_LABELS[bar_status[market]['status']]})"
+        for market in BAR_MARKETS
     )
-    if data.get("stale_bars"):
-        bar_line += "（前回から変わらず・独立した観測として数えない）"
+    if all(bar_status[market]["status"] not in {"updated", "initial"} for market in BAR_MARKETS):
+        bar_line += "（ブリーフ全体を独立した市場観測として数えない）"
 
     tone = data.get("market_tone") or {}
     tone_html = ""
@@ -812,6 +840,12 @@ def render(data: dict) -> str:
     holdings = require(data, "holdings", "root")
     candidates = require(data, "candidates", "root")
     failures = sum((screen.get(market) or {}).get("failures", 0) for market in BAR_MARKETS)
+    observation_labels = candidate_observation_labels(screen, bar_status)
+    observation_html = (
+        '<div class="banner"><div class="k">今回の候補観測</div>'
+        + "".join(f'<p class="num">{esc(text)}</p>' for text in observation_labels.values())
+        + "</div>"
+    )
     if candidates:
         cand_html = f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
     else:
@@ -825,10 +859,7 @@ def render(data: dict) -> str:
                 f"ただし {esc(failures)} 銘柄は取得に失敗しており、判定できていない。"
                 "候補ゼロと取得失敗は別の事象として扱うこと。"
             )
-        cand_html = (
-            '<div class="empty">候補なし。条件を満たす事象が起きた銘柄が無かった。'
-            f"閾値も母集団もこの場では変えない。{note}</div>"
-        )
+        cand_html = f'<div class="empty">現在の候補は0件。{note}</div>'
     hold_html = (
         f'<div class="grid">{"".join(position_card(p) for p in holdings)}</div>'
         if holdings
@@ -844,8 +875,15 @@ def render(data: dict) -> str:
             "入れる (docs/report-contract.md)"
         )
     eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
-    universe = sum((screen.get(market) or {}).get("universe", 0) for market in BAR_MARKETS)
-    cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market=all)"
+    screen_parts = [
+        f"{market.upper()} 母集団 {screen[market]['universe']} / 評価 {screen[market]['evaluated']}"
+        for market in BAR_MARKETS
+    ]
+    updated_candidates = observed_items(data, "candidates")
+    cand_head = (
+        f"候補 {len(candidates)} 件（今回更新 {len(updated_candidates)} 件）— "
+        + " / ".join(screen_parts)
+    )
     if failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
     executions = eff.get("executions")
@@ -855,7 +893,8 @@ def render(data: dict) -> str:
         f"+ 執行記録 {esc(executions)} 件"
     )
     ref_count = sum(1 for p in holdings if p.get("reference_only"))
-    hold_head = f"保有 {len(holdings)} 銘柄"
+    updated_holdings = observed_items(data, "holdings")
+    hold_head = f"保有 {len(holdings)} 銘柄（今回更新 {len(updated_holdings)} 銘柄）"
     if ref_count:
         hold_head += f"（うち判断対象外 {ref_count} 銘柄）"
     all_warnings = list(data.get("warnings") or []) + contract_warnings
@@ -880,6 +919,7 @@ def render(data: dict) -> str:
 <h2>{hold_head}</h2>
 {hold_html}
 <h2>{cand_head}</h2>
+{observation_html}
 {cand_html}
 <h2>総括</h2>
 <div class="notes"><p>{esc(data.get("summary") or UNKNOWN)}</p></div>

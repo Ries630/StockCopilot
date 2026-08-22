@@ -75,6 +75,7 @@ def position(**over) -> dict:
         "name": "テスト銘柄",
         "shares": 100,
         "currency": "JPY",
+        "analysis_status": "current",
         "price": 1234.0,
         "change_pct": 1.2,
         "verdict": "ホールド",
@@ -91,6 +92,26 @@ def position(**over) -> dict:
     }
     pos.update(over)
     return pos
+
+
+def holding_state(**over) -> dict:
+    """分析を持たない現在保有のidentity/stateを作る。
+
+    Args:
+        **over: 上書きしたいキー。
+
+    Returns:
+        ``analysis_status=unavailable``のPosition dict。
+    """
+    state = {
+        "ticker": "9999",
+        "name": "テスト銘柄",
+        "shares": 100,
+        "currency": "JPY",
+        "analysis_status": "unavailable",
+    }
+    state.update(over)
+    return state
 
 
 def candidate(**over) -> dict:
@@ -167,13 +188,32 @@ def test_reference_only_positions_never_actionable() -> None:
     assert actionable_items(data) == []
 
 
+def test_frozen_market_verdicts_are_not_actionable_again() -> None:
+    """前回から引き継いだ判断でHTMLとSlackの通知を再発火しない。"""
+    data = base_data(holdings=[position(verdict="売却")])
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    assert actionable_items(data) == []
+
+
 # ─── HTML 生成 ───────────────────────────────────────────
 
 
 def test_quiet_day_hero_says_no_action() -> None:
     html = report.render(base_data())
-    assert "本日、資金が動く判断なし" in html
-    assert "候補なし" in html
+    assert "今回更新分に資金が動く判断なし" in html
+    assert "JP: 候補ゼロ（12銘柄を評価）" in html
+
+
+def test_no_active_market_is_not_reported_as_candidate_zero() -> None:
+    data = base_data()
+    data["bar_status"] = {
+        "jp": {"status": "unchanged", "previous": "2026-08-20"},
+        "us": {"status": "unchanged", "previous": "2026-08-19"},
+    }
+    html = report.render(data)
+    assert "今回、新規市場観測なし" in html
+    assert "JP: 新規スクリーニングなし（確定足は前回と同じ）" in html
+    assert "候補ゼロ（" not in html
 
 
 def test_actionable_day_hero_lists_tickers() -> None:
@@ -188,6 +228,15 @@ def test_prose_is_always_rendered() -> None:
     for text in ("前回からの変化。", "シナリオ進捗。", "根拠 1", "強い点", "弱い点"):
         assert text in html
     assert "日足終値で ¥1,100 を割ったら手仕舞い。" in html
+
+
+def test_holding_without_analysis_remains_visible() -> None:
+    data = base_data(holdings=[holding_state(ticker="1111", shares=25)])
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    html = report.render(data)
+    assert "1111" in html
+    assert "25株" in html
+    assert "分析なし" in html
 
 
 def test_missing_decision_key_raises() -> None:
@@ -428,6 +477,14 @@ def test_names_are_html_escaped() -> None:
 def test_legacy_stale_bars_is_rejected() -> None:
     with pytest.raises(ValueError, match="stale_bars"):
         report.render(base_data(stale_bars=True))
+
+
+def test_market_bar_status_is_surfaced() -> None:
+    data = base_data()
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    html = report.render(data)
+    assert "JP 2026-08-20 (前回と同じ)" in html
+    assert "US 2026-08-19 (更新)" in html
 
 
 def test_money_formats_per_currency() -> None:
