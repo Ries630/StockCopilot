@@ -152,7 +152,10 @@ def _patch_bar(
     monkeypatch: pytest.MonkeyPatch, closes: list[float], **stats_override: float
 ) -> None:
     """終値 2 本と統計を差し替える (yfinance を叩かせない)。"""
-    df = pd.DataFrame({"close": closes})
+    df = pd.DataFrame(
+        {"close": closes},
+        index=pd.date_range("2026-08-19", periods=len(closes), freq="D"),
+    )
     monkeypatch.setattr(screen, "fetch_ohlcv", lambda *a, **kw: df)
     monkeypatch.setattr(screen, "daily_stats", lambda _df: {**_BASE_STATS, **stats_override})
 
@@ -312,15 +315,15 @@ def test_json_output_is_machine_readable_and_counts_failures(
         "turnover_avg20": 1_000_000_000.0,
     }
 
-    def fake_screen_one(ticker: str, market: str, bars: dict[str, str]) -> dict:
-        bars[market] = "2026-08-20"
+    def fake_evaluate_one(ticker: str, market: str) -> screen.ScreenOutcome:
         if ticker == "FAIL":
             raise RuntimeError("取得できない")
-        return good
+        return screen.ScreenOutcome(good, "2026-08-20", True)
 
     monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
-    monkeypatch.setattr(screen, "screen_one", fake_screen_one)
+    monkeypatch.setattr(screen, "evaluate_one", fake_evaluate_one)
     monkeypatch.setattr(screen, "ensure_bar_dates", lambda bars: None)
+    monkeypatch.setattr(screen, "load_previous_bars", lambda *_: {})
     monkeypatch.setattr(sys, "argv", ["screen.py", "--json", "--market", "jp"])
 
     screen.main()
@@ -328,11 +331,56 @@ def test_json_output_is_machine_readable_and_counts_failures(
     output = capsys.readouterr().out
     assert output.lstrip().startswith("{")
     parsed = json.loads(output)
-    assert parsed["universe"] == 2
-    assert parsed["market"] == "jp"
     assert parsed["bars"] == {"jp": "2026-08-20"}
-    assert parsed["failures"] == 1
-    assert parsed["failure_details"] == [{"ticker": "FAIL", "message": "取得できない"}]
+    assert parsed["bar_status"]["jp"] == {"status": "initial"}
+    assert parsed["screen"]["jp"]["universe"] == 2
+    assert parsed["screen"]["jp"]["evaluated"] == 1
+    assert parsed["screen"]["jp"]["failures"] == 1
+    assert parsed["screen"]["jp"]["failure_details"] == [
+        {"ticker": "FAIL", "message": "取得できない"}
+    ]
     assert parsed["candidates"][0]["market"] == "jp"
     assert parsed["candidates"][0]["currency"] == "JPY"
     assert parsed["candidates"][0]["range"]["pos_pct"] == 50.0
+
+
+def test_stale_high_score_does_not_consume_updated_market_limit() -> None:
+    """停滞市場の上位候補を除外してから上限を適用する。"""
+    stale = [
+        {"ticker": f"JP{i}", "market": "jp", "score": 100 - i} for i in range(5)
+    ]
+    updated = {"ticker": "US1", "market": "us", "score": 1}
+    stats = {
+        "jp": {"selected": 0},
+        "us": {"selected": 0},
+    }
+    status = {
+        "jp": {"status": "unchanged", "previous": "2026-08-20"},
+        "us": {"status": "updated", "previous": "2026-08-19"},
+    }
+
+    selected = screen.select_candidates([*stale, updated], status, stats)
+
+    assert [item["ticker"] for item in selected] == ["US1"]
+    assert stats == {"jp": {"selected": 0}, "us": {"selected": 1}}
+
+
+def test_candidate_zero_requires_an_evaluated_updated_market(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """評価不能は候補ゼロ観測と区別できる件数になる。"""
+    outcomes = {
+        "NO_DATA": screen.ScreenOutcome(None, None, False),
+        "NO_MATCH": screen.ScreenOutcome(None, "2026-08-20", True),
+    }
+
+    def fake(ticker: str, market: str) -> screen.ScreenOutcome:
+        return outcomes[ticker]
+
+    monkeypatch.setattr(screen, "evaluate_one", fake)
+    _, _, stats = screen.collect_screen(
+        [("NO_DATA", "jp"), ("NO_MATCH", "us")], json_mode=True
+    )
+
+    assert stats["jp"]["evaluated"] == 0
+    assert stats["us"]["evaluated"] == 1

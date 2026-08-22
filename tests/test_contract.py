@@ -8,7 +8,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from lib.contract import SCHEMA, validate
-from tests.test_report import base_data, candidate, position
+from tests.test_report import base_data, candidate, market_screen, position
 
 
 def full_data() -> dict:
@@ -100,7 +100,6 @@ def test_display_required_keys_warn_when_removed() -> None:
         (data, "date"),
         (data, "generated_at"),
         (data, "holdings_as_of"),
-        (data, "screen"),
         (data, "summary"),
         (data["effective_holdings"], "executions"),
         (data["holdings"][0], "prose"),
@@ -121,7 +120,6 @@ def test_nested_display_required_keys_warn_when_removed() -> None:
     data = full_data()
     cases = (
         (data["holdings_as_of"][0], "as_of"),
-        (data["screen"], "failures"),
         (data["holdings"][0]["prose"], "change"),
         (data["candidates"][0]["range"], "low"),
         (data["candidates"][0]["prose"], "check"),
@@ -183,8 +181,8 @@ def test_buy_candidate_cannot_downgrade_missing_prose() -> None:
         ("holdings_as_of", 0, "label"),
         ("holdings_as_of", 0, "count"),
         ("effective_holdings", "executions"),
-        ("screen", "universe"),
-        ("screen", "failures"),
+        ("screen", "jp", "universe"),
+        ("screen", "jp", "failures"),
         ("summary",),
         ("holdings", 0, "ticker"),
         ("holdings", 0, "price"),
@@ -412,21 +410,21 @@ def test_candidate_range_cannot_be_reversed() -> None:
         validate(base_data(candidates=[cand]))
 
 
-def test_candidate_market_must_match_a_single_market_screen() -> None:
-    with pytest.raises(ValueError, match="screen.market"):
-        validate(
-            base_data(
-                screen={"universe": 25, "market": "jp", "failures": 0},
-                candidates=[candidate(market="us")],
-            )
-        )
+def test_screen_counts_are_consistent() -> None:
+    screen = {"jp": market_screen(matched=2, selected=1), "us": market_screen()}
+    validate(base_data(screen=screen))
 
-    validate(
-        base_data(
-            screen={"universe": 25, "market": "all", "failures": 0},
-            candidates=[candidate(market="us")],
-        )
-    )
+    for key, value in (("evaluated", 13), ("matched", 13), ("selected", 1)):
+        broken = {"jp": market_screen(**{key: value}), "us": market_screen()}
+        with pytest.raises(ValueError, match=key):
+            validate(base_data(screen=broken))
+
+
+def test_inactive_market_cannot_select_candidates() -> None:
+    data = base_data(screen={"jp": market_screen(selected=1, matched=1), "us": market_screen()})
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    with pytest.raises(ValueError, match="候補を選択"):
+        validate(data)
 
 
 @pytest.mark.parametrize(
@@ -466,9 +464,9 @@ def test_candidate_position_percent_must_match_price_and_range() -> None:
     ("path", "value"),
     [
         (("effective_holdings", "executions"), -1),
-        (("screen", "universe"), -1),
-        (("screen", "failures"), -1),
-        (("screen", "failures"), 1.5),
+        (("screen", "jp", "universe"), -1),
+        (("screen", "jp", "failures"), -1),
+        (("screen", "jp", "failures"), 1.5),
         (("holdings", 0, "price"), True),
         (("candidates", 0, "score_atr"), True),
     ],

@@ -811,7 +811,7 @@ def render(data: dict) -> str:
     # 「保有なし・候補なし」という正常な出力に化けて区別できなくなる
     holdings = require(data, "holdings", "root")
     candidates = require(data, "candidates", "root")
-    failures = screen.get("failures")
+    failures = sum((screen.get(market) or {}).get("failures", 0) for market in BAR_MARKETS)
     if candidates:
         cand_html = f'<div class="grid">{"".join(candidate_card(c) for c in candidates)}</div>'
     else:
@@ -844,14 +844,9 @@ def render(data: dict) -> str:
             "入れる (docs/report-contract.md)"
         )
     eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
-    # 母集団とmarketが欠けた場合は、警告に加えて見出しにも「不明」と出す
-    universe = screen.get("universe")
-    universe = UNKNOWN if universe is None else universe
-    market = screen.get("market") or UNKNOWN
-    cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market={esc(market)})"
-    if failures is None:
-        cand_head += f" / 取得失敗 {UNKNOWN}"
-    elif failures:
+    universe = sum((screen.get(market) or {}).get("universe", 0) for market in BAR_MARKETS)
+    cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market=all)"
+    if failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
     executions = eff.get("executions")
     executions = UNKNOWN if executions is None else executions

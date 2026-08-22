@@ -16,6 +16,19 @@ import report
 from lib.verdicts import ACTIONABLE_VERDICTS, actionable_items, is_actionable
 
 
+def market_screen(**over) -> dict:
+    """市場別screen統計の有効なテストデータを作る。"""
+    item = {
+        "universe": 12,
+        "evaluated": 12,
+        "failures": 0,
+        "matched": 0,
+        "selected": 0,
+    }
+    item.update(over)
+    return item
+
+
 def base_data(**over) -> dict:
     """契約の必須キーを満たす最小の中間表現を作る。
 
@@ -38,7 +51,10 @@ def base_data(**over) -> dict:
         "effective_holdings": {"executions": 0, "lines": ["執行記録なし (as_of 時点のまま)"]},
         "holdings": [],
         "candidates": [],
-        "screen": {"universe": 25, "market": "all", "failures": 0},
+        "screen": {
+            "jp": market_screen(),
+            "us": market_screen(universe=13, evaluated=13),
+        },
         "summary": "総括の本文。",
     }
     data.update(over)
@@ -265,15 +281,23 @@ def test_fetch_failures_are_not_reported_as_zero_candidates() -> None:
     quiet = report.render(base_data())
     assert "取得失敗" not in quiet
 
-    broken = report.render(base_data(screen={"universe": 25, "market": "all", "failures": 3}))
+    broken = report.render(
+        base_data(
+            screen={
+                "jp": market_screen(universe=12, evaluated=9, failures=3),
+                "us": market_screen(universe=13, evaluated=13),
+            }
+        )
+    )
     assert "取得失敗 3 件" in broken
     assert "3 銘柄は取得に失敗しており、判定できていない" in broken
 
 
-def test_missing_failures_count_is_visible_as_unknown() -> None:
-    html = report.render(base_data(screen={"universe": 25, "market": "all"}))
-    assert "取得失敗 不明" in html
-    assert "failures" in html and "が無い" in html
+def test_missing_failures_count_is_rejected() -> None:
+    screen = {"jp": market_screen(), "us": market_screen()}
+    del screen["jp"]["failures"]
+    with pytest.raises(KeyError, match="failures"):
+        report.render(base_data(screen=screen))
 
 
 def test_missing_ticker_raises() -> None:
@@ -332,14 +356,11 @@ def test_unknown_is_still_a_valid_signal_value() -> None:
     assert "9999" in report.render(base_data(holdings=[ok]))
 
 
-def test_missing_universe_or_market_is_visible_as_unknown() -> None:
-    """母集団情報の欠落を正常値に見せず「不明」と警告する。"""
-    for key in ("universe", "market"):
-        screen = {"universe": 25, "market": "all", "failures": 0}
-        del screen[key]
-        html = report.render(base_data(screen=screen))
-        assert "不明" in html
-        assert key in html and "が無い" in html
+def test_missing_market_screen_is_rejected() -> None:
+    screen = {"jp": market_screen(), "us": market_screen()}
+    del screen["jp"]
+    with pytest.raises(KeyError, match="jp"):
+        report.render(base_data(screen=screen))
 
 
 def test_missing_root_display_fields_are_visible_as_unknown() -> None:

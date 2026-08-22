@@ -220,7 +220,10 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
         lines.append(f"🔍 候補 {len(candidates)} 件: {escape_mrkdwn(verdict_tally(candidates))}")
     else:
         screen = data.get("screen") or {}
-        lines.append(f"🔍 候補なし (母集団 {escape_mrkdwn(screen.get('universe', '?'))} 銘柄)")
+        universe = sum(
+            (screen.get(market) or {}).get("universe", 0) for market in ("jp", "us")
+        )
+        lines.append(f"🔍 候補なし (母集団 {escape_mrkdwn(universe)} 銘柄)")
 
     if data.get("stale_bars"):
         lines.append("🕘 確定足は前回から変わらず (独立した観測として数えない)")
