@@ -81,6 +81,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   → [ADR-0020](docs/adr/0020-intermediate-report-json.md)
 - `lib/verdicts.py` — 判断ラベルの定義と「資金が動く判断」の判定。
   `ACTIONABLE_VERDICTS` が **Slack のメンションを鳴らす条件の正** (買い / 積増し / 売却)
+- `finalize_report.py` — 市場別の更新状態に従って今回結果と前回結果を決定的に合流し、
+  中間表現を確定する。市場判定と合流規則は `lib/market_observation.py` に集約する
 - `report.py` — 中間表現 → 自己完結 HTML (`reports/*.html`)。判断も指標計算もしない。
   外部リソースを読み込まない。**用語の説明は本文に書かず `GLOSSARY` のポップオーバーに置く**
   → [ADR-0024](docs/adr/0024-glossary-popovers.md)

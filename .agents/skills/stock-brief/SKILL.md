@@ -18,7 +18,7 @@ description: 株式現物の夕方ブリーフ。候補スクリーニング (st
 - **確認を求めて止まらない。** 応答できる相手がいない。前提が不確かなら、質問ではなく
   「何を前提に置いたか」を出力と JSON の `assumptions` に明記して進める
 - **発注しない。** 分析と提案のみ
-- **LLM は Slack ツールを呼ばない。** 投稿は STEP 5 の `notify.py` が完結させる
+- **LLM は Slack ツールを呼ばない。** 投稿は STEP 6 の `notify.py` が完結させる
   (→ [`docs/adr/0022-slack-webhook-notification.md`](../../../docs/adr/0022-slack-webhook-notification.md))
 - **保有情報をリポジトリに書かない。** 書いてよいのは `.gitignore` 済みの
   `journal/journal.md` `journal/lessons.md` `reports/` `config/watchlist.py` だけ
@@ -30,11 +30,13 @@ description: 株式現物の夕方ブリーフ。候補スクリーニング (st
 ```
 STEP 1  stock-screen   候補スクリーニングと候補分析
 STEP 2  stock-check    保有分析
-STEP 3  中間表現 JSON   判断と機械データを 1 つの器にまとめる
-STEP 4  report.py      HTML レポート
-STEP 5  notify.py      Slack 通知 (メンションは資金が動く判断がある日だけ)
-STEP 6  記録            執行の台帳と運用メモ (定型の分析は書かない)
-STEP 7  チャット本文     短いサマリー
+STEP 3  中間表現 JSON   更新市場の結果を下書きへまとめる
+STEP 4  finalize        停滞市場を前回結果から合流して契約検証する
+STEP 5  report.py      HTML レポート
+STEP 6  notify.py      Slack 通知 (メンションは更新市場の資金移動判断だけ)
+STEP 7  記録            執行の台帳と運用メモ (定型の分析は書かない)
+STEP 8  チャット本文     短いサマリー
+STEP 9  教訓の昇格       再発防止ルールを追跡対象外のlessonsへ置く
 ```
 
 STEP 3 で中間表現を挟むのは、**Slack のメンションの発火条件を LLM の裁量から外す**ため
@@ -44,7 +46,7 @@ STEP 3 で中間表現を挟むのは、**Slack のメンションの発火条�
 
 `stock-screen` スキルの手順を実行する (実体は
 [`.agents/skills/stock-screen/SKILL.md`](../stock-screen/SKILL.md))。
-候補の出力まで完了してから STEP 2 の保有分析へ進む。記録だけは STEP 6 に回す。
+候補の出力まで完了してから STEP 2 の保有分析へ進む。記録だけは STEP 7 に回す。
 
 ただし `stock-screen` の STEP 1 は、人間向け表示ではなく次の機械出力で実行する。
 
@@ -55,6 +57,9 @@ uv run screen.py --json --earnings
 この JSON は STEP 3 まで保持し、`screen` と `candidates` の機械データへそのまま合流させる。
 価格・score・ATR・レンジ位置などを人間向けの丸め出力から復元しない。夕方ブリーフは
 JP/US両市場を扱うため `--market` で限定せず、`--json --earnings` を外さない。
+
+`bar_status`が`updated`または`initial`の市場だけを候補分析へ渡す。`screen.py`が選別済みの
+`candidates`以外を足さない。市場状態と候補ゼロの成立条件は`docs/report-contract.md`を正とする。
 
 候補数によって次のように分岐する。
 
@@ -70,7 +75,17 @@ JP/US両市場を扱うため `--market` で限定せず、`--json --earnings` �
 `stock-check` スキルの手順をそのまま実行する (実体は
 [`.agents/skills/stock-check/SKILL.md`](../stock-check/SKILL.md))。
 STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォーマットまでを行い、
-**記録 (あちらの STEP 5) はここでは行わない** — STEP 6 でまとめて扱う。
+**記録 (あちらの STEP 5) はここでは行わない** — STEP 7 でまとめて扱う。
+
+保有の読み込みと実効保有の組み立ては通常どおり行うが、`analyze.py`は更新市場だけに限定する。
+
+```bash
+uv run analyze.py --market jp  # JPがupdated / initialのときだけ
+uv run analyze.py --market us  # USがupdated / initialのときだけ
+```
+
+`unchanged` / `unavailable`市場では`analyze.py`を呼ばない。両市場とも該当する場合は保有の
+分析呼び出しをすべて飛ばし、STEP 4で前回結果を引き継ぐ。
 
 シリーズ分析の起点は `reports/latest.json` (前回の中間表現)。**無ければ
 `journal/journal.md` の最終エントリを読む** — 2026-08-20 までのエントリは定型の分析を
@@ -83,7 +98,7 @@ STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォー�
 mkdir -p reports
 ```
 
-STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
+STEP 1・2 の更新市場の結果を `reports/YYYY-MM-DD_evening.draft.json` に書く。
 
 **キー・型・必須・語彙の正は
 [`docs/report-contract.schema.json`](../../../docs/report-contract.schema.json)、意味と組み合わせの正は
@@ -104,15 +119,24 @@ STEP 1・2 の結果を `reports/YYYY-MM-DD_evening.json` に書く。
   候補は 買い / 見送り / 決算後に再判定 / 保留。定義の正は
   [`docs/report-contract.md`](../../../docs/report-contract.md) の「判断ラベル」
 - **自動運用口座の銘柄は `reference_only: true`** にし、`verdict` は `"—"` を入れる
-- **確定足が前回エントリと同じなら `stale_bars: true`**
-- **`bars.jp` / `bars.us` は `screen.py --json` の `bars` から移す。** 実行日や平日から
-  推測しない。どちらかを取得できなければJSONを完成扱いにせず、取得失敗を解消して再実行する
+- **`bars` / `bar_status` / `screen` は `screen.py --json` の値をそのまま移す。** 実行日や
+  平日から推測せず、LLMが更新状態や件数を再計算しない
 - **`signals` には色ではなく評価** (`good` / `warn` / `bad` / `unknown`) を入れる。
   `unknown` は実際のデータ不足にだけ使い、資金が動く判断とは併存させない。ホールド・見送り
   など非資金移動の判断は一律に `保留` へ変えず、分析自体が判断を確立できない場合だけ
   `保留` にする
 
-## STEP 4. HTML レポート
+## STEP 4. 市場別結果の確定
+
+```bash
+uv run finalize_report.py reports/YYYY-MM-DD_evening.draft.json \
+  -o reports/YYYY-MM-DD_evening.json
+```
+
+この処理が`unchanged` / `unavailable`市場を`reports/latest.json`から合流し、警告追加と
+契約検証を行う。LLMが前回結果を手でコピーしない。失敗したらHTML・Slackへ進まない。
+
+## STEP 5. HTML レポート
 
 ```bash
 uv run report.py reports/YYYY-MM-DD_evening.json
@@ -122,13 +146,13 @@ uv run report.py reports/YYYY-MM-DD_evening.json
 落とすのは、書き漏らした日と判断が無かった日を区別するため。落ちたら JSON を直して
 やり直す。
 
-## STEP 5. Slack 通知
+## STEP 6. Slack 通知
 
 ```bash
 uv run notify.py reports/YYYY-MM-DD_evening.json
 ```
 
-**このコマンドの結果 (標準出力の 1 行) を STEP 7 に必ず載せる。**
+**このコマンドの結果 (標準出力の 1 行) を STEP 8 に必ず載せる。**
 黙って落とすと「実行されなかった」のか「投稿だけ失敗した」のかが区別できない。
 
 | 出力 | 意味 |
@@ -142,7 +166,7 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 メンションの発火条件と対象ラベルは `lib/verdicts.py` の `ACTIONABLE_VERDICTS` が正。
 **ここで裁量を挟まない。**
 
-## STEP 6. 記録
+## STEP 7. 記録
 
 **定型の分析をジャーナルに書かない。** 分析・判断・前提・Slack 投稿の結果はすべて
 中間表現 JSON に入っており、人が読むのは HTML レポート
@@ -164,7 +188,7 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 定期実行では外部参照を行わないため、`### 対話実行での追補と出典` はこのスキルからは
 書かない (対話実行のときだけ)。
 
-## STEP 7. チャット本文
+## STEP 8. チャット本文
 
 ```
 🌆 Evening Brief — 2026-08-20 (木) 17:30 JST
@@ -185,7 +209,7 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 資金が動く判断が無い日は `🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)` と書く。
 **これは正常であり、無理に候補を出さない。**
 
-## STEP 8. 教訓の昇格
+## STEP 9. 教訓の昇格
 
 `stock-check` / `stock-screen` の規定どおり、再発防止のルールとして使えるものを
 `journal/lessons.md` に書き足す。**この SKILL.md には書かない** — 教訓は実際の保有に

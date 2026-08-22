@@ -6,6 +6,7 @@ import pytest
 
 from lib.market_observation import (
     active_markets,
+    candidate_zero_markets,
     compare_bars,
     load_previous_bars,
     market_from_currency,
@@ -58,6 +59,21 @@ def test_compare_bars_rejects_regression() -> None:
         compare_bars({"jp": "2026-08-19"}, {"jp": "2026-08-20"})
 
 
+def test_candidate_zero_needs_active_market_and_evaluated_population() -> None:
+    screen = {
+        "jp": {"evaluated": 0, "matched": 0},
+        "us": {"evaluated": 3, "matched": 0},
+    }
+    status = {
+        "jp": {"status": "updated"},
+        "us": {"status": "unchanged", "previous": "2026-08-19"},
+    }
+    assert candidate_zero_markets(screen, status) == []
+
+    status["us"] = {"status": "updated", "previous": "2026-08-19"}
+    assert candidate_zero_markets(screen, status) == ["us"]
+
+
 def test_holding_market_is_decided_from_currency_in_one_place() -> None:
     assert market_from_currency("JPY") == "jp"
     assert market_from_currency("USD") == "us"
@@ -107,6 +123,19 @@ def test_latest_takes_priority_over_legacy_journal(tmp_path: Path) -> None:
     assert load_previous_bars(latest, journal) == {
         "jp": "2026-08-20",
         "us": "2026-08-19",
+    }
+
+
+def test_latest_keeps_previous_bar_after_unavailable_market(tmp_path: Path) -> None:
+    latest = tmp_path / "latest.json"
+    latest.write_text(
+        '{"bars":{"us":"2026-08-20"},'
+        '"bar_status":{"jp":{"status":"unavailable","previous":"2026-08-19"}}}'
+    )
+
+    assert load_previous_bars(latest, tmp_path / "journal.md") == {
+        "jp": "2026-08-19",
+        "us": "2026-08-20",
     }
 
 

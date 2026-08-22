@@ -29,7 +29,8 @@ import urllib.error
 import urllib.request
 
 from lib.contract import validate
-from lib.verdicts import actionable_items
+from lib.market_observation import candidate_zero_markets
+from lib.verdicts import actionable_items, observed_items
 
 # .env の置き場所 (リポジトリルート)。gitignore 済み
 ENV_PATH = pathlib.Path(__file__).parent / ".env"
@@ -213,20 +214,35 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
     else:
         lines.append("🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)")
 
-    holdings = data.get("holdings") or []
-    candidates = data.get("candidates") or []
+    holdings = observed_items(data, "holdings")
+    candidates = observed_items(data, "candidates")
     lines.append(f"📦 保有 {len(holdings)} 銘柄: {escape_mrkdwn(verdict_tally(holdings) or '—')}")
     if candidates:
         lines.append(f"🔍 候補 {len(candidates)} 件: {escape_mrkdwn(verdict_tally(candidates))}")
     else:
         screen = data.get("screen") or {}
-        universe = sum(
-            (screen.get(market) or {}).get("universe", 0) for market in ("jp", "us")
-        )
-        lines.append(f"🔍 候補なし (母集団 {escape_mrkdwn(universe)} 銘柄)")
+        zero_markets = candidate_zero_markets(screen, data["bar_status"])
+        if zero_markets:
+            universe = sum(screen[market]["universe"] for market in zero_markets)
+            label = "/".join(market.upper() for market in zero_markets)
+            lines.append(f"🔍 {label} 候補なし (母集団 {escape_mrkdwn(universe)} 銘柄)")
+        else:
+            lines.append("🔍 候補判定なし (候補ゼロとして数えない)")
 
-    if data.get("stale_bars"):
-        lines.append("🕘 確定足は前回から変わらず (独立した観測として数えない)")
+    status_labels = {
+        "updated": "更新",
+        "unchanged": "前回と同じ",
+        "initial": "初回",
+        "unavailable": "取得不能",
+    }
+    states = data["bar_status"]
+    lines.append(
+        "🕘 "
+        + " / ".join(
+            f"{market.upper()} {status_labels[states[market]['status']]}"
+            for market in ("jp", "us")
+        )
+    )
 
     action_lines = []
     for item in items:

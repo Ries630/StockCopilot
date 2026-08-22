@@ -60,6 +60,9 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 `holdings` / `candidates`
 : 保有分析とスクリーニング候補。空配列は正常だが、キーの省略は書き漏らしなので許さない。
+  市場別合流では候補の`market`を使い、保有は`lib/market_observation.py`の
+  `market_from_currency()`でJPY→JP、USD→USと決定する。この対応を他の場所へ複製しない。
+  `market_tone`は市場別合流の対象にせず、今回値を維持する。
 
 `screen`
 : JP/US別の母集団と評価結果。`evaluated`は条件を判定できた件数、`failures`は取得例外、

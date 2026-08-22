@@ -30,6 +30,7 @@ import json
 import pathlib
 
 from lib.contract import BAR_MARKETS, validate
+from lib.market_observation import candidate_zero_markets
 from lib.verdicts import NOT_APPLICABLE, actionable_items
 
 # 4 軸シグナルの評価 → 配色と表示ラベル。
@@ -44,6 +45,13 @@ SIGNAL_STYLE = {
 
 # 表示項目が欠けたとき、空欄や既定値にせず劣化を明示する
 UNKNOWN = "不明"
+
+BAR_STATUS_LABELS = {
+    "updated": "更新",
+    "unchanged": "前回と同じ",
+    "initial": "初回",
+    "unavailable": "取得不能",
+}
 
 # シグナルの軸名 → 見出し。順序が表示順になる
 SIGNAL_AXES = (
@@ -782,6 +790,7 @@ def render(data: dict) -> str:
 
     date = data.get("date") or UNKNOWN
     bars = data.get("bars") or {}
+    bar_status = data["bar_status"]
     screen = data.get("screen") or {}
     eff = require(data, "effective_holdings", "root")
 
@@ -793,10 +802,12 @@ def render(data: dict) -> str:
         as_of_parts.append(text)
     as_of = " / ".join(as_of_parts) or UNKNOWN
     bar_line = " / ".join(
-        f"{market.upper()} {bars.get(market) or UNKNOWN}" for market in BAR_MARKETS
+        f"{market.upper()} {bars.get(market) or UNKNOWN} "
+        f"({BAR_STATUS_LABELS[bar_status[market]['status']]})"
+        for market in BAR_MARKETS
     )
-    if data.get("stale_bars"):
-        bar_line += "（前回から変わらず・独立した観測として数えない）"
+    if all(bar_status[market]["status"] not in {"updated", "initial"} for market in BAR_MARKETS):
+        bar_line += "（ブリーフ全体を独立した市場観測として数えない）"
 
     tone = data.get("market_tone") or {}
     tone_html = ""
@@ -825,10 +836,14 @@ def render(data: dict) -> str:
                 f"ただし {esc(failures)} 銘柄は取得に失敗しており、判定できていない。"
                 "候補ゼロと取得失敗は別の事象として扱うこと。"
             )
-        cand_html = (
-            '<div class="empty">候補なし。条件を満たす事象が起きた銘柄が無かった。'
-            f"閾値も母集団もこの場では変えない。{note}</div>"
-        )
+        zero_markets = candidate_zero_markets(screen, bar_status)
+        if zero_markets:
+            prefix = f"{', '.join(market.upper() for market in zero_markets)} は候補なし。"
+            message = "条件を満たす事象が起きた銘柄が無かった。閾値も母集団も変えない。"
+        else:
+            prefix = "候補判定なし。"
+            message = "更新市場で評価できた母集団が無いため、候補ゼロとして数えない。"
+        cand_html = f'<div class="empty">{prefix}{message}{note}</div>'
     hold_html = (
         f'<div class="grid">{"".join(position_card(p) for p in holdings)}</div>'
         if holdings
@@ -844,8 +859,11 @@ def render(data: dict) -> str:
             "入れる (docs/report-contract.md)"
         )
     eff_lines = "".join(f"<p class='num'>{esc(line)}</p>" for line in lines)
-    universe = sum((screen.get(market) or {}).get("universe", 0) for market in BAR_MARKETS)
-    cand_head = f"候補 {len(candidates)} 件 — 母集団 {esc(universe)} 銘柄 (market=all)"
+    screen_parts = [
+        f"{market.upper()} 母集団 {screen[market]['universe']} / 評価 {screen[market]['evaluated']}"
+        for market in BAR_MARKETS
+    ]
+    cand_head = f"候補 {len(candidates)} 件 — {' / '.join(screen_parts)}"
     if failures:
         cand_head += f" / 取得失敗 {esc(failures)} 件"
     executions = eff.get("executions")

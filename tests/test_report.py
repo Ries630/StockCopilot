@@ -167,6 +167,13 @@ def test_reference_only_positions_never_actionable() -> None:
     assert actionable_items(data) == []
 
 
+def test_frozen_market_verdicts_are_not_actionable_again() -> None:
+    """前回から引き継いだ判断でHTMLとSlackの通知を再発火しない。"""
+    data = base_data(holdings=[position(verdict="売却")])
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    assert actionable_items(data) == []
+
+
 # ─── HTML 生成 ───────────────────────────────────────────
 
 
@@ -428,6 +435,14 @@ def test_names_are_html_escaped() -> None:
 def test_legacy_stale_bars_is_rejected() -> None:
     with pytest.raises(ValueError, match="stale_bars"):
         report.render(base_data(stale_bars=True))
+
+
+def test_market_bar_status_is_surfaced() -> None:
+    data = base_data()
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    html = report.render(data)
+    assert "JP 2026-08-20 (前回と同じ)" in html
+    assert "US 2026-08-19 (更新)" in html
 
 
 def test_money_formats_per_currency() -> None:

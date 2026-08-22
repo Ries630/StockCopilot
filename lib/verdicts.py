@@ -9,6 +9,8 @@ HTML のヒーローに出す内容を必ず一致させるため。片方だけ
 レポートには何も無い (逆も) という状態が起こる。
 """
 
+from lib.market_observation import active_markets, market_from_currency
+
 # 保有分析 (stock-check) の 5 ラベル。順序は journal/README.md の記載順
 HOLDING_VERDICTS = ("ホールド", "積増し", "部分利確", "売却", "保留")
 
@@ -80,7 +82,7 @@ def actionable_items(data: dict) -> list[dict]:
     """
     found: list[dict] = []
     for kind, key in (("holding", "holdings"), ("candidate", "candidates")):
-        for item in data.get(key) or []:
+        for item in observed_items(data, key):
             if item.get("reference_only"):
                 continue
             if is_actionable(item.get("verdict")):
@@ -93,3 +95,22 @@ def actionable_items(data: dict) -> list[dict]:
                     }
                 )
     return found
+
+
+def observed_items(data: dict, key: str) -> list[dict]:
+    """今回更新された市場に属する項目だけを返す。
+
+    Args:
+        data: 中間表現。
+        key: ``holdings`` または ``candidates``。
+
+    Returns:
+        ``updated`` / ``initial``市場の項目。
+    """
+    markets = active_markets(data.get("bar_status") or {})
+    result = []
+    for item in data.get(key) or []:
+        market = market_from_currency(item["currency"]) if key == "holdings" else item["market"]
+        if market in markets:
+            result.append(item)
+    return result

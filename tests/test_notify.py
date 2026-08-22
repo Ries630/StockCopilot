@@ -11,7 +11,7 @@ import sys
 import pytest
 
 import notify
-from tests.test_report import base_data, candidate, position
+from tests.test_report import base_data, candidate, market_screen, position
 
 
 @pytest.fixture
@@ -180,7 +180,37 @@ def test_warnings_are_included() -> None:
     data = base_data(warnings=["取得に失敗した銘柄が 1 件"])
     _, blocks, _ = notify.build_message(data, "reports/x.html", "")
     body = text_of({"blocks": blocks})
+    assert "JP 更新 / US 更新" in body
     assert "取得に失敗した銘柄が 1 件" in body
+
+
+def test_frozen_market_is_excluded_from_tally_and_mention() -> None:
+    data = base_data(
+        holdings=[position(verdict="売却")],
+        candidates=[candidate(verdict="買い")],
+    )
+    data["bar_status"]["jp"] = {"status": "unchanged", "previous": "2026-08-20"}
+    _, blocks, mentioned = notify.build_message(data, "reports/x.html", "U123")
+    body = text_of({"blocks": blocks})
+    assert mentioned
+    assert "`9999`" not in body
+    assert "`AAAA`" in body
+    assert "JP 前回と同じ / US 更新" in body
+
+
+def test_candidate_zero_population_excludes_inactive_market() -> None:
+    data = base_data(
+        candidates=[],
+        screen={
+            "jp": market_screen(universe=5, evaluated=5),
+            "us": market_screen(universe=100, evaluated=0),
+        },
+    )
+    data["bar_status"]["us"] = {"status": "unavailable"}
+    _, blocks, _ = notify.build_message(data, "reports/x.html", "")
+    body = text_of({"blocks": blocks})
+    assert "JP 候補なし (母集団 5 銘柄)" in body
+    assert "母集団 105 銘柄" not in body
 
 
 def test_main_adds_contract_warnings_to_dry_run(

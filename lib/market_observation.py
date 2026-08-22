@@ -99,6 +99,26 @@ def active_markets(bar_status: dict[str, dict]) -> set[str]:
     }
 
 
+def candidate_zero_markets(screen: dict[str, dict], bar_status: dict[str, dict]) -> list[str]:
+    """候補ゼロを有効な観測として数えられる市場を返す。
+
+    Args:
+        screen: 市場別のスクリーニング件数。
+        bar_status: 市場別の確定足更新状態。
+
+    Returns:
+        更新市場かつ1件以上を評価し、通過が0件だった市場。
+    """
+    active = active_markets(bar_status)
+    return [
+        market
+        for market in MARKETS
+        if market in active
+        and screen[market]["evaluated"] > 0
+        and screen[market]["matched"] == 0
+    ]
+
+
 def merge_market_results(previous: dict | None, current: dict, bar_status: dict[str, dict]) -> dict:
     """停滞・取得不能市場の判断を前回結果から引き継ぐ。
 
@@ -148,7 +168,18 @@ def load_previous_bars(latest_path: Path, journal_path: Path) -> dict[str, str]:
     bars = data.get("bars")
     if not isinstance(bars, dict):
         raise ValueError(f"{latest_path}: bars を読めない")
-    return {market: value for market in MARKETS if isinstance((value := bars.get(market)), str)}
+    status = data.get("bar_status")
+    result: dict[str, str] = {}
+    for market in MARKETS:
+        value = bars.get(market)
+        if isinstance(value, str):
+            result[market] = value
+            continue
+        if isinstance(status, dict):
+            previous = (status.get(market) or {}).get("previous")
+            if isinstance(previous, str):
+                result[market] = previous
+    return result
 
 
 def parse_legacy_bar_dates(text: str) -> dict[str, str]:
