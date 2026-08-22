@@ -31,6 +31,8 @@ Investment の as_of 時点の保有ではなく、ジャーナルの執行記�
 
 import argparse
 import json
+from dataclasses import dataclass
+from pathlib import Path
 
 from config.universe import (
     MAX_CANDIDATES,
@@ -48,7 +50,27 @@ from lib.datasource import fetch_ohlcv
 from lib.earnings import earnings_note
 from lib.holdings import HeldTickers, held_tickers
 from lib.indicators import daily_stats
+from lib.journal import JOURNAL_PATH
+from lib.market_observation import active_markets, compare_bars, load_previous_bars
 from lib.names import display_name, label
+
+LATEST_REPORT_PATH = Path(__file__).resolve().parent / "reports" / "latest.json"
+"""前回の夕方ブリーフ。市場別の確定足比較に使う。"""
+
+
+@dataclass(frozen=True)
+class ScreenOutcome:
+    """1銘柄の取得・評価結果。
+
+    Attributes:
+        candidate: 条件を通過した候補。非通過ならNone。
+        bar_date: 取得できた最新確定足日。取得不能ならNone。
+        evaluated: 指標と流動性を評価できたか。
+    """
+
+    candidate: dict | None
+    bar_date: str | None
+    evaluated: bool
 
 
 def build_universe(
@@ -111,18 +133,32 @@ def screen_one(
     Returns:
         候補 dict (score / reasons 付き) または None。
     """
+    outcome = evaluate_one(ticker, market)
+    if bar_dates is not None and outcome.bar_date is not None:
+        bar_dates[market] = max(bar_dates.get(market, outcome.bar_date), outcome.bar_date)
+    return outcome.candidate
+
+
+def evaluate_one(ticker: str, market: str) -> ScreenOutcome:
+    """1銘柄を取得し、評価可否と候補を分けて返す。
+
+    Args:
+        ticker: 生ティッカー。
+        market: ``jp`` または ``us``。
+
+    Returns:
+        確定足日、評価可否、候補を持つ結果。
+    """
     df = fetch_ohlcv(ticker, market=market, interval="1d", limit=60)
-    if bar_dates is not None and not df.empty:
-        bar_date = df.index[-1].date().isoformat()
-        bar_dates[market] = max(bar_dates.get(market, bar_date), bar_date)
+    bar_date = None if df.empty else df.index[-1].date().isoformat()
     stats = daily_stats(df)
     if not stats:
-        return None
+        return ScreenOutcome(None, bar_date, False)
 
     # 流動性フロア: 20 日平均売買代金
     floor = MIN_TURNOVER_JPY if market == "jp" else MIN_TURNOVER_USD
     if stats["turnover_avg20"] < floor:
-        return None
+        return ScreenOutcome(None, bar_date, True)
 
     close = float(df["close"].iloc[-1])
     prev = float(df["close"].iloc[-2])
@@ -149,9 +185,9 @@ def screen_one(
         reasons.append(f"20 日レンジを{break_dir}に突破 (ATR {break_atr:.1f} 倍)")
         passed.append(break_atr)
     if not passed:
-        return None
+        return ScreenOutcome(None, bar_date, True)
 
-    return {
+    candidate = {
         "ticker": ticker,
         "market": market,
         "close": close,
@@ -163,6 +199,7 @@ def screen_one(
         "score": max(passed),
         "reasons": reasons,
     }
+    return ScreenOutcome(candidate, bar_date, True)
 
 
 def ensure_bar_dates(bar_dates: dict[str, str]) -> None:
@@ -170,7 +207,10 @@ def ensure_bar_dates(bar_dates: dict[str, str]) -> None:
     for market, ticker in (("jp", UNIVERSE_JP[0]), ("us", UNIVERSE_US[0])):
         if market in bar_dates:
             continue
-        df = fetch_ohlcv(ticker, market=market, interval="1d", limit=2)
+        try:
+            df = fetch_ohlcv(ticker, market=market, interval="1d", limit=2)
+        except Exception:
+            continue
         if not df.empty:
             bar_dates[market] = df.index[-1].date().isoformat()
 
@@ -282,8 +322,77 @@ def json_candidate(row: dict) -> dict:
     return result
 
 
+def collect_screen(
+    universe: list[tuple[str, str]], json_mode: bool
+) -> tuple[list[dict], dict[str, str], dict[str, dict]]:
+    """全候補・確定足・市場別の評価件数を収集する。
+
+    Args:
+        universe: ``(ticker, market)`` の母集団。
+        json_mode: 標準出力をJSONだけにする場合はTrue。
+
+    Returns:
+        ``(全候補, 市場別確定足日, 市場別screen統計)``。
+    """
+    stats = {
+        market: {
+            "universe": sum(1 for _, item_market in universe if item_market == market),
+            "evaluated": 0,
+            "failures": 0,
+            "matched": 0,
+            "selected": 0,
+            "failure_details": [],
+        }
+        for market in ("jp", "us")
+    }
+    candidates: list[dict] = []
+    bar_dates: dict[str, str] = {}
+    for ticker, market in universe:
+        try:
+            outcome = evaluate_one(ticker, market)
+        except Exception as exc:  # 1 銘柄の失敗で全体を止めない
+            message = str(exc)[:100]
+            stats[market]["failures"] += 1
+            stats[market]["failure_details"].append({"ticker": ticker, "message": message})
+            if not json_mode:
+                print(f"  [warn] {ticker}: {message}")
+            continue
+        if outcome.bar_date is not None:
+            bar_dates[market] = max(
+                bar_dates.get(market, outcome.bar_date), outcome.bar_date
+            )
+        if outcome.evaluated:
+            stats[market]["evaluated"] += 1
+        if outcome.candidate is not None:
+            candidates.append(outcome.candidate)
+            stats[market]["matched"] += 1
+    return candidates, bar_dates, stats
+
+
+def select_candidates(
+    candidates: list[dict], bar_status: dict[str, dict], stats: dict[str, dict]
+) -> list[dict]:
+    """更新市場だけから候補を選び、score順と上限を適用する。
+
+    Args:
+        candidates: 上限適用前の全候補。
+        bar_status: 市場別の確定足更新状態。
+        stats: 市場別screen統計。selected件数を更新する。
+
+    Returns:
+        更新市場から選ばれた最大 ``MAX_CANDIDATES`` 件。
+    """
+    markets = active_markets(bar_status)
+    selected = [row for row in candidates if row["market"] in markets]
+    selected.sort(key=lambda row: -row["score"])
+    selected = selected[:MAX_CANDIDATES]
+    for market in ("jp", "us"):
+        stats[market]["selected"] = sum(1 for row in selected if row["market"] == market)
+    return selected
+
+
 def main() -> None:
-    """ユニバースを機械条件にかけ、候補を score 順で表示する。"""
+    """ユニバースを機械条件にかけ、更新市場の候補を表示する。"""
     ap = argparse.ArgumentParser(description="株式候補の機械スクリーニング")
     ap.add_argument("--market", default="all", choices=["jp", "us", "all"])
     ap.add_argument("--include-held", action="store_true", help="保有銘柄も母集団に含める")
@@ -295,36 +404,20 @@ def main() -> None:
     universe, held = build_universe(args.market, args.include_held)
     if not args.json:
         print(held_summary(held, args.include_held))
-    candidates = []
-    failures = []
-    bar_dates: dict[str, str] = {}
-    for ticker, market in universe:
-        try:
-            row = screen_one(ticker, market, bar_dates)
-        except Exception as e:  # 1 銘柄の失敗で全体を止めない
-            message = str(e)[:100]
-            failures.append({"ticker": ticker, "message": message})
-            # JSONモードでは標準出力をJSONだけにし、警告は構造化データへ入れる
-            if not args.json:
-                print(f"  [warn] {ticker}: {message}")
-            continue
-        if row:
-            candidates.append(row)
-
-    candidates.sort(key=lambda r: -r["score"])
-    candidates = candidates[:MAX_CANDIDATES]
+    candidates, bar_dates, screen_stats = collect_screen(universe, args.json)
+    ensure_bar_dates(bar_dates)
+    previous_bars = load_previous_bars(LATEST_REPORT_PATH, JOURNAL_PATH)
+    bar_status = compare_bars(bar_dates, previous_bars)
+    candidates = select_candidates(candidates, bar_status, screen_stats)
     attach_names(candidates)
     if args.earnings:
         attach_earnings(candidates)
 
     if args.json:
-        ensure_bar_dates(bar_dates)
         print(json.dumps({
-            "universe": len(universe),
-            "market": args.market,
             "bars": bar_dates,
-            "failures": len(failures),
-            "failure_details": failures,
+            "bar_status": bar_status,
+            "screen": screen_stats,
             # 銘柄そのものは出さない (public リポジトリに貼られうる出力のため)。
             # 除外が効いていたかを件数で確認できるだけにする
             "held": {
@@ -345,9 +438,12 @@ def main() -> None:
         return
 
     print(
-        f"母集団 {len(universe)} 銘柄 (market={args.market}) "
-        f"/ 取得失敗 {len(failures)} 件"
+        f"母集団 {len(universe)} 銘柄 (market={args.market}) / "
+        f"取得失敗 {sum(item['failures'] for item in screen_stats.values())} 件"
     )
+    for market in ("jp", "us"):
+        item = bar_status[market]
+        print(f"  {market.upper()} {bar_dates.get(market, '不明')} ({item['status']})")
     if not candidates:
         # 該当なしは異常ではない。埋め草の候補を出さないための正常な出力
         print("\n候補なし。無理に候補を作らないこと。")

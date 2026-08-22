@@ -31,7 +31,7 @@ BAR_MARKETS = ("jp", "us")
 """確定足の日付を表示する市場。"""
 
 ROOT_DISPLAY_KEYS = frozenset(
-    {"date", "generated_at", "holdings_as_of", "screen", "summary"}
+    {"date", "generated_at", "holdings_as_of", "summary"}
 )
 """トップレベルで欠落を警告へ降格できる表示項目。"""
 
@@ -137,8 +137,6 @@ def _is_display_gap(error: ValidationError) -> bool:
         return False
     if path == ():
         return missing in ROOT_DISPLAY_KEYS
-    if path == ("screen",):
-        return missing in {"universe", "market", "failures"}
     if path == ("effective_holdings",):
         return missing == "executions"
     if _is_indexed(path, "holdings_as_of"):
@@ -223,24 +221,6 @@ def _validate_range(candidate: dict, where: str) -> None:
         )
 
 
-def _validate_candidate_market(candidate: dict, screen_market: str, where: str) -> None:
-    """候補市場がスクリーニング範囲と一致することを検証する。
-
-    Args:
-        candidate: 構造検証済みのCandidate。
-        screen_market: `screen.market`。
-        where: エラー文に出す位置。
-
-    Raises:
-        ValueError: 単一市場の結果へ別市場の候補が混ざっている場合。
-    """
-    if screen_market != "all" and candidate["market"] != screen_market:
-        raise ValueError(
-            f"{where}.market: {candidate['market']!r} は screen.market "
-            f"{screen_market!r} と一致しない (docs/report-contract.md)"
-        )
-
-
 def _validate_bar_status(data: dict) -> None:
     """確定足日と市場別更新状態の組み合わせを検証する。
 
@@ -278,6 +258,32 @@ def _validate_bar_status(data: dict) -> None:
             raise ValueError(f"{where}: updated だが現在日が前回日より新しくない")
 
 
+def _validate_screen(data: dict) -> None:
+    """市場別screen件数と更新状態の整合を検証する。
+
+    Args:
+        data: 構造検証済みの中間表現。
+
+    Raises:
+        ValueError: 件数の大小関係か市場ゲートが矛盾する場合。
+    """
+    for market in BAR_MARKETS:
+        item = data["screen"][market]
+        where = f"screen.{market}"
+        if item["evaluated"] + item["failures"] > item["universe"]:
+            raise ValueError(f"{where}: evaluated + failures が universe を上回る")
+        if item["matched"] > item["evaluated"]:
+            raise ValueError(f"{where}: matched が evaluated を上回る")
+        if item["selected"] > item["matched"]:
+            raise ValueError(f"{where}: selected が matched を上回る")
+        details = item.get("failure_details")
+        if details is not None and len(details) != item["failures"]:
+            raise ValueError(f"{where}: failure_details 件数が failures と一致しない")
+        status = data["bar_status"][market]["status"]
+        if status not in {"updated", "initial"} and item["selected"]:
+            raise ValueError(f"{where}: {status} 市場から候補を選択している")
+
+
 def validate(data: dict) -> list[str]:
     """中間表現の構造と業務上の組み合わせを検証する。
 
@@ -299,15 +305,13 @@ def validate(data: dict) -> list[str]:
         _raise_contract_error(error)
 
     _validate_bar_status(data)
+    _validate_screen(data)
 
     for index, position in enumerate(data["holdings"]):
         if not position.get("reference_only"):
             _validate_actionable_consistency(position, f"holdings[{index}]")
     for index, candidate in enumerate(data["candidates"]):
         where = f"candidates[{index}]"
-        screen_market = (data.get("screen") or {}).get("market")
-        if screen_market is not None:
-            _validate_candidate_market(candidate, screen_market, where)
         _validate_actionable_consistency(candidate, where)
         candidate_range = candidate.get("range") or {}
         if all(key in candidate_range for key in ("low", "high", "pos_pct")):

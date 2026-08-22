@@ -91,11 +91,32 @@
     },
     "screen": {
       "type": "object", "additionalProperties": false,
-      "required": ["universe", "market", "failures"],
+      "required": ["jp", "us"],
+      "properties": {
+        "jp": { "$ref": "#/$defs/marketScreen" },
+        "us": { "$ref": "#/$defs/marketScreen" }
+      }
+    },
+    "marketScreen": {
+      "type": "object", "additionalProperties": false,
+      "required": ["universe", "evaluated", "failures", "matched", "selected"],
       "properties": {
         "universe": { "type": "integer", "minimum": 0 },
-        "market": { "enum": ["jp", "us", "all"] },
-        "failures": { "type": "integer", "minimum": 0 }
+        "evaluated": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 },
+        "matched": { "type": "integer", "minimum": 0 },
+        "selected": { "type": "integer", "minimum": 0 },
+        "failure_details": {
+          "type": "array", "items": { "$ref": "#/$defs/failureDetail" }
+        }
+      }
+    },
+    "failureDetail": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ticker", "message"],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/nonEmptyString" },
+        "message": { "$ref": "#/$defs/nonEmptyString" }
       }
     },
     "signalValue": { "enum": ["good", "warn", "bad", "unknown"] },

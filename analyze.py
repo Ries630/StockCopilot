@@ -15,9 +15,9 @@
 トリガー (「日足終値で X を割ったら」) が決算をまたぐと飛ばされて執行できない。
 """
 
+import argparse
 import datetime as dt
 import json
-import sys
 
 from config.universe import NAMES_JP
 from lib.datasource import detect_market, fetch_ohlcv
@@ -120,18 +120,31 @@ def print_holdings_header(holdings: list[dict]) -> None:
 
 def main() -> None:
     """引数の銘柄 (省略時は保有全銘柄) を順に分析する。"""
-    args = sys.argv[1:]
-    if args:
+    parser = argparse.ArgumentParser(description="保有/指定銘柄のテクニカル分析")
+    parser.add_argument("--market", default="all", choices=["jp", "us", "all"])
+    parser.add_argument("tickers", nargs="*")
+    args = parser.parse_args()
+    if args.tickers:
         # 4 桁コードだけでは何の会社か分からないので、日本株には名前を付ける
         # (保有モードは Investment の生成物が日本語名を持っている)
         targets = []
-        for t in args:
+        for t in args.tickers:
             market = detect_market(t)
+            if args.market != "all" and market != args.market:
+                continue
             targets.append((t, market, display_name(t, market, NAMES_JP) or ""))
     else:
         holdings = load_holdings()
+        holdings = [
+            holding
+            for holding in holdings
+            if args.market == "all" or holding["market"] == args.market
+        ]
         if not holdings:
-            print("保有銘柄が見つからない。ティッカーを引数で指定すること。")
+            print(
+                f"対象市場 ({args.market}) の保有銘柄が見つからない。"
+                "ティッカーを引数で指定すること。"
+            )
             return
         print_holdings_header(holdings)
         targets = [

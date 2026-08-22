@@ -62,9 +62,11 @@ LLMの判断・シナリオ・散文 ──────┘         │
 : 保有分析とスクリーニング候補。空配列は正常だが、キーの省略は書き漏らしなので許さない。
 
 `screen`
-: 実際に調べた母集団、市場、取得失敗数。取得失敗は「条件を満たさなかった」のではなく
-「判定できなかった」ので、候補ゼロと分けて表示する。
-`screen.market`が`all`以外なら、すべての候補の`market`が一致しなければならない。
+: JP/US別の母集団と評価結果。`evaluated`は条件を判定できた件数、`failures`は取得例外、
+  `matched`は上限適用前の通過件数、`selected`は更新市場の選別と上限適用後の件数。
+  候補ゼロを独立した観測として数えるのは、状態が`updated`または`initial`で、かつ
+  `evaluated > 0`、`matched == 0`の市場だけ。母集団0、全件取得失敗、確定足取得不能は
+  候補ゼロへ数えない。
 
 `summary` / `assumptions` / `warnings`
 : 総括、確認を取らずに置いた前提、取得・解釈上の警告。空白だけの文は情報がないため許さない。
@@ -195,7 +197,7 @@ severityは次の2段階（→ [ADR-0027](adr/0027-contract-validation-severity.
 
 - トップレベル: `date`、`generated_at`、`holdings_as_of`、`screen`、`summary`
 - `holdings_as_of[].as_of` / `label`
-- `effective_holdings.executions`、`screen.universe` / `market` / `failures`
+- `effective_holdings.executions`
 - 保有: `prose`、`prose.change` / `scenario`
 - 候補: `score_atr`、`pass_reason`、`range`とその3要素、`prose`、`prose.check`
 

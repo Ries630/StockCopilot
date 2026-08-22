@@ -8,10 +8,57 @@
 from __future__ import annotations
 
 import datetime as dt
+import sys
 
 import pytest
 
 import analyze
+
+
+def test_holdings_market_filter_preserves_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """市場限定しても保有モードの銘柄名・口座・株数を失わない。"""
+    holdings = [
+        {
+            "ticker": "1111",
+            "market": "jp",
+            "name": "国内銘柄",
+            "account": "口座A",
+            "quantity": 10,
+            "as_of": "2026-08-20",
+        },
+        {
+            "ticker": "USAA",
+            "market": "us",
+            "name": "US Asset",
+            "account": "口座B",
+            "quantity": 5,
+            "as_of": "2026-08-20",
+        },
+    ]
+    calls: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(analyze, "load_holdings", lambda: holdings)
+    monkeypatch.setattr(analyze, "analyze_symbol", lambda *args: calls.append(args))
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "us"])
+
+    analyze.main()
+
+    assert calls == [("USAA", "us", "US Asset (口座B 5株)")]
+
+
+def test_explicit_tickers_are_filtered_before_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """候補分析でも更新市場以外のティッカーを呼ばない。"""
+    calls: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(analyze, "display_name", lambda *_: "表示名")
+    monkeypatch.setattr(analyze, "analyze_symbol", lambda *args: calls.append(args))
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "us", "1111", "USAA"])
+
+    analyze.main()
+
+    assert calls == [("USAA", "us", "表示名")]
 
 
 def test_holdings_header_fresh(capsys: pytest.CaptureFixture[str]) -> None:
