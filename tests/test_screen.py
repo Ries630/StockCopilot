@@ -384,3 +384,20 @@ def test_candidate_zero_requires_an_evaluated_updated_market(
 
     assert stats["jp"]["evaluated"] == 0
     assert stats["us"]["evaluated"] == 1
+
+
+def test_human_output_does_not_call_unchanged_market_candidate_zero(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(screen, "build_universe", lambda *_: ([], None))
+    monkeypatch.setattr(
+        screen, "ensure_bar_dates", lambda bars: bars.update({"jp": "2026-08-20"})
+    )
+    monkeypatch.setattr(screen, "load_previous_bars", lambda *_: {"jp": "2026-08-20"})
+    monkeypatch.setattr(sys, "argv", ["screen.py", "--market", "jp"])
+
+    screen.main()
+
+    output = capsys.readouterr().out
+    assert "JP: 新規スクリーニングなし（確定足は前回と同じ）" in output
+    assert "候補なし。" not in output

@@ -13,6 +13,11 @@ from collections.abc import Iterable
 
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
+from lib.market_observation import (
+    HOLDING_ANALYSIS_FIELDS,
+    active_markets,
+    market_from_currency,
+)
 from lib.verdicts import ACTIONABLE_VERDICTS
 
 SCHEMA_PATH = pathlib.Path(__file__).resolve().parents[1] / "docs" / "report-contract.schema.json"
@@ -284,6 +289,42 @@ def _validate_screen(data: dict) -> None:
             raise ValueError(f"{where}: {status} 市場から候補を選択している")
 
 
+def _validate_holding_analysis(data: dict) -> None:
+    """保有状態と分析の所有元が市場状態に合うことを検証する。
+
+    Args:
+        data: 構造検証済みの中間表現。
+
+    Raises:
+        ValueError: 重複、分析状態、市場状態の組み合わせが契約外の場合。
+    """
+    active = active_markets(data["bar_status"])
+    seen: set[tuple[str, str]] = set()
+    for index, item in enumerate(data["holdings"]):
+        where = f"holdings[{index}]"
+        key = (item["ticker"].upper(), item["currency"])
+        if key in seen:
+            raise ValueError(f"{where}: 同じ保有が重複している: {item['ticker']}")
+        seen.add(key)
+        market = market_from_currency(item["currency"])
+        analysis_status = item["analysis_status"]
+        if market in active and analysis_status != "current":
+            raise ValueError(
+                f"{where}: 更新市場の analysis_status は 'current' にする"
+            )
+        if market not in active and analysis_status == "current":
+            raise ValueError(
+                f"{where}: 非更新市場の analysis_status を 'current' にできない"
+            )
+        if analysis_status == "unavailable":
+            present = sorted(HOLDING_ANALYSIS_FIELDS & item.keys())
+            if present:
+                raise ValueError(
+                    f"{where}: analysis_status='unavailable' に分析項目がある: "
+                    + " / ".join(present)
+                )
+
+
 def validate(data: dict) -> list[str]:
     """中間表現の構造と業務上の組み合わせを検証する。
 
@@ -306,6 +347,7 @@ def validate(data: dict) -> list[str]:
 
     _validate_bar_status(data)
     _validate_screen(data)
+    _validate_holding_analysis(data)
 
     for index, position in enumerate(data["holdings"]):
         if not position.get("reference_only"):

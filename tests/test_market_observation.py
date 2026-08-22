@@ -6,6 +6,7 @@ import pytest
 
 from lib.market_observation import (
     active_markets,
+    candidate_observation_labels,
     candidate_zero_markets,
     compare_bars,
     load_previous_bars,
@@ -74,6 +75,22 @@ def test_candidate_zero_needs_active_market_and_evaluated_population() -> None:
     assert candidate_zero_markets(screen, status) == ["us"]
 
 
+def test_candidate_observation_labels_distinguish_zero_and_no_observation() -> None:
+    screen = {
+        "jp": {"evaluated": 5, "matched": 0, "selected": 0},
+        "us": {"evaluated": 0, "matched": 0, "selected": 0},
+    }
+    status = {
+        "jp": {"status": "updated"},
+        "us": {"status": "unchanged", "previous": "2026-08-19"},
+    }
+
+    assert candidate_observation_labels(screen, status) == {
+        "jp": "JP: 候補ゼロ（5銘柄を評価）",
+        "us": "US: 新規スクリーニングなし（確定足は前回と同じ）",
+    }
+
+
 def test_holding_market_is_decided_from_currency_in_one_place() -> None:
     assert market_from_currency("JPY") == "jp"
     assert market_from_currency("USD") == "us"
@@ -81,11 +98,20 @@ def test_holding_market_is_decided_from_currency_in_one_place() -> None:
         market_from_currency("EUR")
 
 
-def test_merge_keeps_updated_market_and_freezes_unchanged_market() -> None:
+def test_merge_uses_current_holding_state_and_previous_analysis() -> None:
     previous = {
         "holdings": [
-            {"ticker": "JP-OLD", "currency": "JPY"},
-            {"ticker": "US-OLD", "currency": "USD"},
+            {
+                "ticker": "JP-A",
+                "name": "旧名称",
+                "currency": "JPY",
+                "shares": 10,
+                "analysis_status": "current",
+                "price": 100,
+                "signals": {},
+                "prose": {},
+                "verdict": "ホールド",
+            },
         ],
         "candidates": [
             {"ticker": "JP-OLD-C", "market": "jp"},
@@ -94,8 +120,23 @@ def test_merge_keeps_updated_market_and_freezes_unchanged_market() -> None:
     }
     current = {
         "holdings": [
-            {"ticker": "JP-NEW", "currency": "JPY"},
-            {"ticker": "US-NEW", "currency": "USD"},
+            {
+                "ticker": "JP-A",
+                "name": "現在名称",
+                "currency": "JPY",
+                "shares": 5,
+                "analysis_status": "unavailable",
+            },
+            {
+                "ticker": "US-A",
+                "currency": "USD",
+                "shares": 3,
+                "analysis_status": "current",
+                "price": 200,
+                "signals": {},
+                "prose": {},
+                "verdict": "ホールド",
+            },
         ],
         "candidates": [
             {"ticker": "JP-NEW-C", "market": "jp"},
@@ -110,9 +151,93 @@ def test_merge_keeps_updated_market_and_freezes_unchanged_market() -> None:
 
     merged = merge_market_results(previous, current, status)
 
-    assert [item["ticker"] for item in merged["holdings"]] == ["JP-OLD", "US-NEW"]
+    assert [item["ticker"] for item in merged["holdings"]] == ["JP-A", "US-A"]
+    assert merged["holdings"][0]["shares"] == 5
+    assert merged["holdings"][0]["name"] == "現在名称"
+    assert merged["holdings"][0]["price"] == 100
+    assert merged["holdings"][0]["analysis_status"] == "carried"
     assert [item["ticker"] for item in merged["candidates"]] == ["JP-OLD-C", "US-NEW-C"]
     assert merged["summary"] == "今回"
+
+
+def test_merge_holding_set_follows_current_state() -> None:
+    previous = {
+        "holdings": [
+            {
+                "ticker": "SOLD",
+                "currency": "USD",
+                "analysis_status": "current",
+                "price": 100,
+                "signals": {},
+                "prose": {},
+            }
+        ],
+        "candidates": [],
+    }
+    current = {
+        "holdings": [
+            {
+                "ticker": "NEW",
+                "currency": "USD",
+                "shares": 2,
+                "analysis_status": "unavailable",
+            }
+        ],
+        "candidates": [],
+    }
+    status = {
+        "jp": {"status": "unchanged"},
+        "us": {"status": "unchanged"},
+    }
+
+    merged = merge_market_results(previous, current, status)
+
+    assert merged["holdings"] == [
+        {
+            "ticker": "NEW",
+            "currency": "USD",
+            "shares": 2,
+            "analysis_status": "unavailable",
+        }
+    ]
+
+
+def test_merge_current_reference_only_state_overrides_previous_verdict() -> None:
+    previous = {
+        "holdings": [
+            {
+                "ticker": "US-A",
+                "currency": "USD",
+                "analysis_status": "current",
+                "price": 100,
+                "signals": {},
+                "prose": {},
+                "verdict": "売却",
+            }
+        ],
+        "candidates": [],
+    }
+    current = {
+        "holdings": [
+            {
+                "ticker": "US-A",
+                "currency": "USD",
+                "reference_only": True,
+                "analysis_status": "unavailable",
+            }
+        ],
+        "candidates": [],
+    }
+    status = {
+        "jp": {"status": "updated"},
+        "us": {"status": "unchanged"},
+    }
+
+    merged = merge_market_results(previous, current, status)
+
+    assert merged["holdings"][0]["reference_only"] is True
+    assert merged["holdings"][0]["verdict"] == "—"
+    assert merged["holdings"][0]["analysis_status"] == "carried"
 
 
 def test_latest_takes_priority_over_legacy_journal(tmp_path: Path) -> None:

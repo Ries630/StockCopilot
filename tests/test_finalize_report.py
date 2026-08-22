@@ -10,7 +10,7 @@ import pytest
 
 import finalize_report
 from finalize_report import finalize
-from tests.test_report import base_data, candidate, market_screen, position
+from tests.test_report import base_data, candidate, holding_state, market_screen, position
 
 
 def test_finalize_freezes_unchanged_market_and_keeps_updated_market() -> None:
@@ -19,7 +19,10 @@ def test_finalize_freezes_unchanged_market_and_keeps_updated_market() -> None:
         candidates=[candidate(ticker="JP-OLD", market="jp", currency="JPY", name="国内候補")],
     )
     current = base_data(
-        holdings=[position(ticker="US-H", currency="USD", name="US Holding")],
+        holdings=[
+            holding_state(ticker="1111", shares=50),
+            position(ticker="US-H", currency="USD", name="US Holding"),
+        ],
         candidates=[candidate(ticker="US-NEW")],
         screen={
             "jp": market_screen(),
@@ -34,6 +37,8 @@ def test_finalize_freezes_unchanged_market_and_keeps_updated_market() -> None:
     result = finalize(current, previous)
 
     assert [item["ticker"] for item in result["holdings"]] == ["1111", "US-H"]
+    assert result["holdings"][0]["shares"] == 50
+    assert result["holdings"][0]["analysis_status"] == "carried"
     assert [item["ticker"] for item in result["candidates"]] == ["JP-OLD", "US-NEW"]
     assert any("JP: 確定足は前回から更新なし" in warning for warning in result["warnings"])
 
@@ -42,7 +47,7 @@ def test_finalize_unavailable_market_continues_other_market() -> None:
     previous = base_data(holdings=[position(ticker="1111")])
     current = base_data(
         bars={"us": "2026-08-19"},
-        holdings=[],
+        holdings=[holding_state(ticker="1111", shares=75)],
         screen={"jp": market_screen(), "us": market_screen()},
     )
     current["bar_status"]["jp"] = {
@@ -53,6 +58,7 @@ def test_finalize_unavailable_market_continues_other_market() -> None:
     result = finalize(current, previous)
 
     assert [item["ticker"] for item in result["holdings"]] == ["1111"]
+    assert result["holdings"][0]["shares"] == 75
     assert any("JP: 確定足日を取得できず" in warning for warning in result["warnings"])
 
 
@@ -65,7 +71,7 @@ def test_both_unchanged_is_not_a_new_actionable_observation() -> None:
             )
         ]
     )
-    current = base_data(holdings=[])
+    current = base_data(holdings=[holding_state()])
     current["bar_status"] = {
         "jp": {"status": "unchanged", "previous": "2026-08-20"},
         "us": {"status": "unchanged", "previous": "2026-08-19"},
@@ -74,7 +80,41 @@ def test_both_unchanged_is_not_a_new_actionable_observation() -> None:
     result = finalize(current, previous)
 
     assert result["holdings"][0]["verdict"] == "売却"
+    assert result["holdings"][0]["analysis_status"] == "carried"
     assert len(result["warnings"]) == 2
+
+
+def test_finalize_rejects_missing_current_required_collection() -> None:
+    current = base_data()
+    del current["holdings"]
+
+    with pytest.raises(KeyError, match="holdings"):
+        finalize(current, None)
+
+
+@pytest.mark.parametrize("missing", ["holdings", "candidates"])
+def test_finalize_rejects_broken_previous_schema_v2(missing: str) -> None:
+    previous = base_data()
+    del previous[missing]
+
+    with pytest.raises(KeyError, match=missing):
+        finalize(base_data(), previous)
+
+
+def test_finalize_drops_sold_holding_and_keeps_new_state_without_analysis() -> None:
+    previous = base_data(holdings=[position(ticker="OLD")])
+    current = base_data(
+        holdings=[holding_state(ticker="NEW", currency="USD", name="New Holding")]
+    )
+    current["bar_status"] = {
+        "jp": {"status": "unchanged", "previous": "2026-08-20"},
+        "us": {"status": "unchanged", "previous": "2026-08-19"},
+    }
+
+    result = finalize(current, previous)
+
+    assert [item["ticker"] for item in result["holdings"]] == ["NEW"]
+    assert result["holdings"][0]["analysis_status"] == "unavailable"
 
 
 def test_cli_writes_valid_final_json(

@@ -11,7 +11,12 @@ import json
 from pathlib import Path
 
 from lib.contract import validate
-from lib.market_observation import MARKETS, merge_market_results
+from lib.market_observation import (
+    MARKETS,
+    active_markets,
+    market_from_currency,
+    merge_market_results,
+)
 
 
 def finalize(current: dict, previous: dict | None) -> dict:
@@ -24,8 +29,12 @@ def finalize(current: dict, previous: dict | None) -> dict:
     Returns:
         合流・検証済みの中間表現。
     """
+    validate(current)
+    normalized_previous = normalize_previous(previous)
+    if normalized_previous is not None and normalized_previous.get("schema") == 2:
+        validate(normalized_previous)
     status = current["bar_status"]
-    merged = merge_market_results(previous, current, status)
+    merged = merge_market_results(normalized_previous, current, status)
     warnings = list(merged.get("warnings") or [])
     for market in MARKETS:
         state = status[market]["status"]
@@ -40,6 +49,39 @@ def finalize(current: dict, previous: dict | None) -> dict:
         merged["warnings"] = list(dict.fromkeys(warnings))
     validate(merged)
     return merged
+
+
+def normalize_previous(previous: dict | None) -> dict | None:
+    """移行前のPositionへ分析の由来を補い、合流可能な形にする。
+
+    Args:
+        previous: 前回の中間表現。初回はNone。
+
+    Returns:
+        入力を変更せず正規化した前回表現。初回はNone。
+    """
+    if previous is None:
+        return None
+    normalized = dict(previous)
+    if "holdings" not in previous:
+        return normalized
+    active = active_markets(previous.get("bar_status") or {})
+    holdings = []
+    for item in previous["holdings"]:
+        position = dict(item)
+        if "analysis_status" not in position:
+            market = market_from_currency(position.get("currency"))
+            complete = all(name in position for name in ("price", "signals", "prose"))
+            position["analysis_status"] = (
+                "current"
+                if complete and market in active
+                else "carried"
+                if complete
+                else "unavailable"
+            )
+        holdings.append(position)
+    normalized["holdings"] = holdings
+    return normalized
 
 
 def main() -> None:

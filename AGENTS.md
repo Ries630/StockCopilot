@@ -55,7 +55,9 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `lib/journal.py` — ジャーナルの `### 執行` を読むパーサ (約定日 / 銘柄 / 残株数の 3 項目のみ)。
   書式の正は `journal/README.md`
 - `lib/market_observation.py` — 前回と今回の確定足を市場別に比較し、更新市場だけを分析して
-  停滞・取得不能市場を前回結果から引き継ぐ → [ADR-0029](docs/adr/0029-market-specific-bar-observation.md)
+  停滞・取得不能市場を前回結果から引き継ぐ。保有は現在のidentity/stateを正にして分析だけを
+  合流する → [ADR-0029](docs/adr/0029-market-specific-bar-observation.md) /
+  [ADR-0030](docs/adr/0030-current-holding-state-with-carried-analysis.md)
 - `config/universe.py` — 探索ユニバースとパラメータ。母集団は
   ウォッチリスト / 探索ユニバース / 保有 (除外) の 3 層
   → [ADR-0010](docs/adr/0010-three-layer-universe.md)。

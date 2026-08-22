@@ -51,7 +51,12 @@ from lib.earnings import earnings_note
 from lib.holdings import HeldTickers, held_tickers
 from lib.indicators import daily_stats
 from lib.journal import JOURNAL_PATH
-from lib.market_observation import active_markets, compare_bars, load_previous_bars
+from lib.market_observation import (
+    active_markets,
+    candidate_observation_labels,
+    compare_bars,
+    load_previous_bars,
+)
 from lib.names import display_name, label
 
 LATEST_REPORT_PATH = Path(__file__).resolve().parent / "reports" / "latest.json"
@@ -441,12 +446,15 @@ def main() -> None:
         f"母集団 {len(universe)} 銘柄 (market={args.market}) / "
         f"取得失敗 {sum(item['failures'] for item in screen_stats.values())} 件"
     )
-    for market in ("jp", "us"):
+    display_markets = ("jp", "us") if args.market == "all" else (args.market,)
+    for market in display_markets:
         item = bar_status[market]
         print(f"  {market.upper()} {bar_dates.get(market, '不明')} ({item['status']})")
+    observation_labels = candidate_observation_labels(screen_stats, bar_status)
+    print()
+    for market in display_markets:
+        print(observation_labels[market])
     if not candidates:
-        # 該当なしは異常ではない。埋め草の候補を出さないための正常な出力
-        print("\n候補なし。無理に候補を作らないこと。")
         return
     print(f"\n候補 {len(candidates)} 件 (採否は analyze.py の分析で判断する):\n")
     for c in candidates:

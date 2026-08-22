@@ -121,6 +121,10 @@ STEP 1・2 の更新市場の結果を `reports/YYYY-MM-DD_evening.draft.json` �
 - **自動運用口座の銘柄は `reference_only: true`** にし、`verdict` は `"—"` を入れる
 - **`bars` / `bar_status` / `screen` は `screen.py --json` の値をそのまま移す。** 実行日や
   平日から推測せず、LLMが更新状態や件数を再計算しない
+- **`holdings`の集合とidentity/stateは今回の実効保有を正にする。** 更新市場は分析済みの
+  Positionを`analysis_status: current`で入れる。非更新市場は現在の`ticker` / `name` /
+  `shares` / `currency` / `reference_only`だけを`analysis_status: unavailable`で入れ、前回分析を
+  手でコピーしない。STEP 4が同一銘柄の分析だけを決定的に合流する
 - **`signals` には色ではなく評価** (`good` / `warn` / `bad` / `unknown`) を入れる。
   `unknown` は実際のデータ不足にだけ使い、資金が動く判断とは併存させない。ホールド・見送り
   など非資金移動の判断は一律に `保留` へ変えず、分析自体が判断を確立できない場合だけ
@@ -193,8 +197,8 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 ```
 🌆 Evening Brief — 2026-08-20 (木) 17:30 JST
 
-📦 保有 4 銘柄: ホールド 1 / 部分利確 1 / 保留 1 / 対象外 1
-🔍 候補 2 件: 買い 1 / 決算後に再判定 1
+📦 保有 4 銘柄（今回更新 2 銘柄）: ホールド 1 / 部分利確 1 / 保留 1 / 対象外 1
+🔍 候補 2 件（今回更新 1 件）: 買い 1 / 決算後に再判定 1
 🎯 資金が動く判断 1 件: 買い 4444 (候補)
 
 優先アクションを 1 つだけ、1〜2 行で。
@@ -206,8 +210,8 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 ジャーナルに書いたものがあれば最後に 1 行足す (`📝 ジャーナル: 執行 1 件を記録`)。
 **何も書かなかった日は何も足さない。**
 
-資金が動く判断が無い日は `🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)` と書く。
-**これは正常であり、無理に候補を出さない。**
+総数、今回更新数、候補ゼロ、新規市場観測なしの使い分けは`docs/report-contract.md`の
+「市場別表示の意味」に従う。**無理に候補を出さない。**
 
 ## STEP 9. 教訓の昇格
 

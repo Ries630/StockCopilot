@@ -29,7 +29,7 @@ import urllib.error
 import urllib.request
 
 from lib.contract import validate
-from lib.market_observation import candidate_zero_markets
+from lib.market_observation import active_markets, candidate_observation_labels
 from lib.verdicts import actionable_items, observed_items
 
 # .env の置き場所 (リポジトリルート)。gitignore 済み
@@ -100,7 +100,12 @@ def verdict_tally(items: list, key: str = "verdict") -> str:
     """
     counts: dict[str, int] = {}
     for item in items:
-        label = "対象外" if item.get("reference_only") else (item.get(key) or "?")
+        if item.get("reference_only"):
+            label = "対象外"
+        elif item.get("analysis_status") == "unavailable":
+            label = "分析なし"
+        else:
+            label = item.get(key) or "?"
         counts[label] = counts.get(label, 0) + 1
     return " / ".join(f"{label} {n}" for label, n in counts.items())
 
@@ -211,23 +216,24 @@ def build_message(data: dict, report_path: str, user_id: str) -> tuple[str, list
 
     if items:
         lines.append(f"🎯 *資金が動く判断 {len(items)} 件*")
+    elif not active_markets(data["bar_status"]):
+        lines.append("🎯 新規市場観測なし (前回結果を継続・候補ゼロには数えない)")
     else:
-        lines.append("🎯 資金が動く判断なし (候補ゼロ・ホールドのみは正常)")
+        lines.append("🎯 今回更新分に資金が動く判断なし")
 
-    holdings = observed_items(data, "holdings")
-    candidates = observed_items(data, "candidates")
-    lines.append(f"📦 保有 {len(holdings)} 銘柄: {escape_mrkdwn(verdict_tally(holdings) or '—')}")
-    if candidates:
-        lines.append(f"🔍 候補 {len(candidates)} 件: {escape_mrkdwn(verdict_tally(candidates))}")
-    else:
-        screen = data.get("screen") or {}
-        zero_markets = candidate_zero_markets(screen, data["bar_status"])
-        if zero_markets:
-            universe = sum(screen[market]["universe"] for market in zero_markets)
-            label = "/".join(market.upper() for market in zero_markets)
-            lines.append(f"🔍 {label} 候補なし (母集団 {escape_mrkdwn(universe)} 銘柄)")
-        else:
-            lines.append("🔍 候補判定なし (候補ゼロとして数えない)")
+    holdings = data["holdings"]
+    candidates = data["candidates"]
+    updated_holdings = observed_items(data, "holdings")
+    updated_candidates = observed_items(data, "candidates")
+    lines.append(
+        f"📦 保有 {len(holdings)} 銘柄（今回更新 {len(updated_holdings)} 銘柄）: "
+        f"{escape_mrkdwn(verdict_tally(holdings) or '—')}"
+    )
+    lines.append(
+        f"🔍 候補 {len(candidates)} 件（今回更新 {len(updated_candidates)} 件）: "
+        f"{escape_mrkdwn(verdict_tally(candidates) or '—')}"
+    )
+    lines.extend(candidate_observation_labels(data["screen"], data["bar_status"]).values())
 
     status_labels = {
         "updated": "更新",

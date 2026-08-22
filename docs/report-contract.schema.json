@@ -174,12 +174,13 @@
     },
     "position": {
       "type": "object", "additionalProperties": false,
-      "required": ["ticker", "currency", "price", "signals", "prose"],
+      "required": ["ticker", "currency", "analysis_status"],
       "properties": {
         "ticker": { "$ref": "#/$defs/nonEmptyString" },
         "name": { "$ref": "#/$defs/nonEmptyString" },
         "shares": { "$ref": "#/$defs/positiveNumber" },
         "currency": { "enum": ["JPY", "USD"] },
+        "analysis_status": { "enum": ["current", "carried", "unavailable"] },
         "price": { "$ref": "#/$defs/positiveNumber" },
         "change_pct": { "type": "number" },
         "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留", "—"] },
@@ -196,14 +197,29 @@
       "allOf": [
         {
           "if": {
+            "properties": {
+              "analysis_status": { "enum": ["current", "carried"] }
+            }
+          },
+          "then": { "required": ["price", "signals", "prose"] }
+        },
+        {
+          "if": {
             "required": ["reference_only"],
             "properties": { "reference_only": { "const": true } }
           },
           "then": { "properties": { "verdict": { "const": "—" } } },
           "else": {
-            "required": ["verdict"],
-            "properties": {
-              "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留"] }
+            "if": {
+              "properties": {
+                "analysis_status": { "enum": ["current", "carried"] }
+              }
+            },
+            "then": {
+              "required": ["verdict"],
+              "properties": {
+                "verdict": { "enum": ["ホールド", "積増し", "部分利確", "売却", "保留"] }
+              }
             }
           }
         },
