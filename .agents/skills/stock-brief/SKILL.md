@@ -1,6 +1,6 @@
 ---
 name: stock-brief
-description: 株式現物の夕方ブリーフ。保有分析 (stock-check) と候補スクリーニング (stock-screen) を通しで実行し、中間表現 JSON → HTML レポート → Slack 通知 → ジャーナル追記までを完結させる。平日夕方の定期タスクから呼ばれるほか、「夕方ブリーフ」「イブニングブリーフ」「今日の株をまとめて」で起動
+description: 株式現物の夕方ブリーフ。候補スクリーニング (stock-screen) と保有分析 (stock-check) を通しで実行し、中間表現 JSON → HTML レポート → Slack 通知 → ジャーナル追記までを完結させる。平日夕方の定期タスクから呼ばれるほか、「夕方ブリーフ」「イブニングブリーフ」「今日の株をまとめて」で起動
 ---
 # Stock Brief — 株式現物の夕方ブリーフ
 
@@ -28,8 +28,8 @@ description: 株式現物の夕方ブリーフ。保有分析 (stock-check) と�
 ## 流れ
 
 ```
-STEP 1  stock-check    保有分析
-STEP 2  stock-screen   候補スクリーニング
+STEP 1  stock-screen   候補スクリーニングと候補分析
+STEP 2  stock-check    保有分析
 STEP 3  中間表現 JSON   判断と機械データを 1 つの器にまとめる
 STEP 4  report.py      HTML レポート
 STEP 5  notify.py      Slack 通知 (メンションは資金が動く判断がある日だけ)
@@ -40,23 +40,11 @@ STEP 7  チャット本文     短いサマリー
 STEP 3 で中間表現を挟むのは、**Slack のメンションの発火条件を LLM の裁量から外す**ため
 (→ [`docs/adr/0020-intermediate-report-json.md`](../../../docs/adr/0020-intermediate-report-json.md))。
 
-## STEP 1. 保有分析
+## STEP 1. 候補スクリーニングと候補分析
 
-`stock-check` スキルの手順をそのまま実行する (実体は
-[`.agents/skills/stock-check/SKILL.md`](../stock-check/SKILL.md))。
-STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォーマットまでを行い、
-**記録 (あちらの STEP 5) はここでは行わない** — STEP 6 でまとめて扱う。
-
-シリーズ分析の起点は `reports/latest.json` (前回の中間表現)。**無ければ
-`journal/journal.md` の最終エントリを読む** — 2026-08-20 までのエントリは定型の分析を
-含んでいる。この fallback は移行期のためのもので、JSON が溜まったら消す
-(→ [`docs/adr/0025-journal-as-ledger-and-memo.md`](../../../docs/adr/0025-journal-as-ledger-and-memo.md))。
-
-## STEP 2. 候補スクリーニング
-
-同様に `stock-screen` スキルの手順を実行する (実体は
+`stock-screen` スキルの手順を実行する (実体は
 [`.agents/skills/stock-screen/SKILL.md`](../stock-screen/SKILL.md))。
-こちらも記録は STEP 6 に回す。
+候補の出力まで完了してから STEP 2 の保有分析へ進む。記録だけは STEP 6 に回す。
 
 ただし `stock-screen` の STEP 1 は、人間向け表示ではなく次の機械出力で実行する。
 
@@ -68,7 +56,26 @@ uv run screen.py --json --earnings
 価格・score・ATR・レンジ位置などを人間向けの丸め出力から復元しない。夕方ブリーフは
 JP/US両市場を扱うため `--market` で限定せず、`--json --earnings` を外さない。
 
-**候補ゼロは正常な結果。** 埋め草の候補を作らない。
+候補数によって次のように分岐する。
+
+- **候補ゼロ:** 正常な結果として `stock-screen` の候補分析を飛ばす。埋め草の候補を作らず、
+  `candidates: []` と機械データを保持したまま STEP 2 の保有分析へ進む
+- **候補あり:** `stock-screen` の責務として候補を `analyze.py` で分析し、候補用の判断ラベルを
+  確定する。候補分析が完了してから STEP 2 の保有分析へ進む
+
+どちらの場合も候補側の処理だけでブリーフを終えない。
+
+## STEP 2. 保有分析
+
+`stock-check` スキルの手順をそのまま実行する (実体は
+[`.agents/skills/stock-check/SKILL.md`](../stock-check/SKILL.md))。
+STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォーマットまでを行い、
+**記録 (あちらの STEP 5) はここでは行わない** — STEP 6 でまとめて扱う。
+
+シリーズ分析の起点は `reports/latest.json` (前回の中間表現)。**無ければ
+`journal/journal.md` の最終エントリを読む** — 2026-08-20 までのエントリは定型の分析を
+含んでいる。この fallback は移行期のためのもので、JSON が溜まったら消す
+(→ [`docs/adr/0025-journal-as-ledger-and-memo.md`](../../../docs/adr/0025-journal-as-ledger-and-memo.md))。
 
 ## STEP 3. 中間表現 JSON
 
