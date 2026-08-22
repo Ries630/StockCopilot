@@ -137,7 +137,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 `.claude/skills/` は同じ実体への symlink で、Claude Code 用の橋渡し
 → [ADR-0019](docs/adr/0019-agent-agnostic-instructions.md)
 
-- `stock-brief` — 平日夕方の定期ブリーフ。stock-check → stock-screen → 中間表現 JSON →
+- `stock-brief` — 平日夕方の定期ブリーフ。stock-screen → stock-check → 中間表現 JSON →
   HTML → Slack → ジャーナルを通しで回す束ね役。実体は `.agents/skills/stock-brief/SKILL.md`
 - `stock-check` — 保有株のテクニカル + シナリオ追跡 (analyze.py + journal)。
   実体は `.agents/skills/stock-check/SKILL.md`
