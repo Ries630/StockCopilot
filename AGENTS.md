@@ -106,8 +106,8 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 
 ## 他プロジェクトとの関係
 
-- **Investment** (`~/Documents/Claude/Projects/Investment`): 保有銘柄は
-  `output/report_data_*.json` の `stock.holdings` を読むだけ。module import はしない (疎結合)。
+- **Investment**: 実入力ディレクトリの正は `lib/holdings.py` の `INVESTMENT_OUTPUT`。
+  `report_data_*.json` の `stock.holdings` を読むだけ。module import はしない (疎結合)。
   Investment 側のファイルを書き換えないこと。
 - **TradingCopilot**: コード共有はしない (コピー流用の慣習)。指標エンジンの移植元
   → [ADR-0001](docs/adr/0001-separate-sibling-project.md)

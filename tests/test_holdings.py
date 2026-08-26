@@ -19,6 +19,13 @@ import pytest
 from lib import holdings, journal
 
 
+def test_investment_output_uses_agent_projects_default() -> None:
+    """Investment の移転後ディレクトリを既定の入力先にする。"""
+    assert holdings.INVESTMENT_OUTPUT == (
+        Path.home() / "AgentProjects" / "Investment" / "output"
+    )
+
+
 def _report(**overrides) -> dict:
     """テスト用の report_data 相当の dict を組み立てる。"""
     data = {
