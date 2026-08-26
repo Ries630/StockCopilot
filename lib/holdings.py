@@ -23,7 +23,7 @@ from pathlib import Path
 
 from lib.journal import Execution, load_executions
 
-INVESTMENT_OUTPUT = Path("~/Documents/Claude/Projects/Investment/output").expanduser()
+INVESTMENT_OUTPUT = Path("~/AgentProjects/Investment/output").expanduser()
 
 # テクニカル分析可能な資産クラス
 _ANALYZABLE_CLASSES = {"国内株式", "米国株式", "海外ETF"}

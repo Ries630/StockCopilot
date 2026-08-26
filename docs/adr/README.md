@@ -45,6 +45,8 @@ ADR の役目。
   将来の設計判断ではなく、実装に合わせて更新する比較表として管理する
 - **ジャーナルの書式**（[#19](https://github.com/Ries630/StockCopilot/issues/19)）
   — 正は `journal/README.md` にあり、ADR にすると二重管理になる
+- **Investment 生成物の既定入力先**（[#87](https://github.com/Ries630/StockCopilot/issues/87)）
+  — 可逆的なローカルパス変更であり、`tests/test_holdings.py` が移転後の既定値を固定している
 
 ## 一覧
 
