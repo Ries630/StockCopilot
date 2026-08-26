@@ -7,6 +7,8 @@
 
 仮想通貨向けの兄弟プロジェクト TradingCopilot から指標エンジンを移植しているが、
 コードは共有せずコピー流用している。
+両プロジェクトの機能差、意図的差分、共通化候補は
+[`docs/sibling-project-comparison.md`](docs/sibling-project-comparison.md)を正とする。
 
 ## 全体像
 
