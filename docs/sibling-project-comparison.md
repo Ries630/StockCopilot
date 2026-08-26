@@ -89,7 +89,7 @@ StockCopilotの発注禁止は、TradingCopilotとの差を埋める対象では
 |---|---|---|---|
 | 指標セット | RSI、MACD、EMA、Bollinger Bands、ATR、Stoch RSI、OBV、ADX、20本と60本の高安 | スイング分析では同じ指標セット | 共通化候補 |
 | 指標の実装 | [`lib/indicators.py`](../lib/indicators.py)の純粋なDataFrame計算 | `swing/_analyze.py`でAPI接続、整形、指標計算、表示を一つのスクリプトに持つ | 共通化候補 |
-| 定期シグナル | 候補抽出後の判断は分析結果と外部参照を使う | Morning BriefはEMA200、20日ブレイクアウト、ATRによる固定ルールを使う | 意図的差分 |
+| 定期シグナル | `screen.py`の結果を分析へ渡し、外部参照は[実行モード](output-contract.md#実行モードと外部参照)に従い、定期実行では引かず、対話実行だけ使える | Morning BriefはEMA200、20日ブレイクアウト、ATRによる固定ルールを使う | 意図的差分 |
 | リスク計算 | 判断を提案するが、注文サイズを計算しない | 残高リスク、同時保有数、注文上限、TPとSLを注文プランへ反映する | 対象外 |
 
 指標計算は、現在もっともコード共有に近い。
