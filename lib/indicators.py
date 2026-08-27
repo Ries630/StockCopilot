@@ -1,4 +1,4 @@
-"""指標エンジン (TradingCopilot swing/_analyze.py の ind() から移植)。
+"""指標エンジン (CryptoTradingCopilot swing/_analyze.py の ind() から移植)。
 
 指標セットは資産クラス非依存なので crypto 版と同一構成:
 RSI(14) / MACD(12,26,9) / EMA(20,50,200) / Bollinger(20,2σ) / ATR(14) /

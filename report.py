@@ -17,7 +17,7 @@
 
 あわせて入力と同じ場所に `latest.json` を複製する。**次回実行がシリーズ分析の起点に
 使う**もので、スキルの手作業にすると 1 回の書き忘れで前回との差分が静かに切れる
-(→ docs/adr/0025-journal-as-ledger-and-memo.md)。TradingCopilot の
+(→ docs/adr/0025-journal-as-ledger-and-memo.md)。CryptoTradingCopilot の
 `order_plans/latest.json` と同じ形。
 
 グラフィックだけでなく散文 (`prose`) を必ず描画する。HTML 単独でレポートとして

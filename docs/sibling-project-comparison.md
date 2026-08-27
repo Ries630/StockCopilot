@@ -1,7 +1,7 @@
-# StockCopilotとTradingCopilotの比較
+# StockCopilotとCryptoTradingCopilotの比較
 
-StockCopilotとTradingCopilotは、同じ指標セットと候補抽出の考え方を持つ。
-しかし、StockCopilotは発注を禁止し、TradingCopilotは承認後の本番発注まで担う。
+StockCopilotとCryptoTradingCopilotは、同じ指標セットと候補抽出の考え方を持つ。
+しかし、StockCopilotは発注を禁止し、CryptoTradingCopilotは承認後の本番発注まで担う。
 似ている実装をそのまま共有すると、この安全境界まで結合する可能性がある。
 
 この文書は、両プロジェクトの現行差分を一つの場所で管理し、意図しない乖離の発見と共通化の判断に使う。
@@ -14,15 +14,15 @@ StockCopilotを基準に書くが、どちらかを上位の実装とはみな�
 | プロジェクト | 基準 | 確認日 |
 |---|---|---|
 | StockCopilot | `origin/main` の `f2a48ef3f0240ae69f002bd10cedfeefcfa0a2ea` | 2026-08-26 |
-| TradingCopilot | ローカルチェックアウト。Gitメタデータなし | 2026-08-26 |
+| CryptoTradingCopilot | ローカルチェックアウト。Gitメタデータなし | 2026-08-26 |
 
-TradingCopilotにはコミット基準がないため、同プロジェクトの記述は確認日時点のスナップショットである。
+CryptoTradingCopilotにはコミット基準がないため、同プロジェクトの記述は確認日時点のスナップショットである。
 将来Git管理を始めたら、確認日だけでなく基準コミットも記録する。
-TradingCopilotが非Gitの間、両プロジェクトの乖離をCIで自動検出することはできない。
+CryptoTradingCopilotが非Gitの間、両プロジェクトの乖離をCIで自動検出することはできない。
 現在は関連変更時に本書の更新契機を照合し、Git管理の開始後に共通フィクスチャのCI化を検討する。
 
 この公開文書には、実際の保有銘柄、数量、口座情報、注文内容、資格情報を記録しない。
-TradingCopilot側のパスは、同プロジェクトのルートからの相対パスで表す。
+CryptoTradingCopilot側のパスは、同プロジェクトのルートからの相対パスで表す。
 
 各比較表の現状記述は、ソースとプロジェクト指示から確認した事実である。
 「共通化候補の優先順位」と「再評価のサイン」は評価案であり、採用済みの設計判断ではない。
@@ -41,7 +41,7 @@ TradingCopilot側のパスは、同プロジェクトのルートからの相対
 
 ## 目的と安全境界
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | 対象 | 日本株、米国株、ETFの現物 | 暗号資産の無期限先物 | 意図的差分 |
 | 主な役割 | 候補スクリーニング、保有分析、売買判断の提案 | 固定シグナルの注文プラン生成、承認後の発注、複数会場の裁量分析 | 意図的差分 |
@@ -49,13 +49,13 @@ TradingCopilot側のパスは、同プロジェクトのルートからの相対
 | 認証情報 | Slack Webhookだけを扱い、保有情報も公開リポジトリへ残さない | 取引APIの資格情報をローカル環境に持つ | 意図的差分 |
 | リポジトリ | 公開Gitリポジトリ。PRとCIで変更を管理する | 現在はローカルの非Gitチェックアウト | 意図的差分 |
 
-StockCopilotの発注禁止は、TradingCopilotとの差を埋める対象ではない。
+StockCopilotの発注禁止は、CryptoTradingCopilotとの差を埋める対象ではない。
 この境界があるため、株式分析の変更から本番注文へ到達する経路が生まれない。
 分離とコピー流用を選んだ理由は[ADR-0001](adr/0001-separate-sibling-project.md)に記録されている。
 
 ## 分析の流れ
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | 定期処理 | 夕方に株式候補と保有を分析し、中間表現JSON、HTML、Slack通知を生成する | 09:05 JSTに固定銘柄の日足シグナルを判定し、注文プランを生成する | 意図的差分 |
 | 定期シグナル | スクリーニング結果を分析へ渡し、LLMが候補の採否を判断する | `morning_signal.py`がEMA200と20日ブレイクアウトを決定的に判定する | 意図的差分 |
@@ -67,12 +67,12 @@ StockCopilotの発注禁止は、TradingCopilotとの差を埋める対象では
 | 市場固有情報 | 決算日、銘柄種別、日本語名、市場別の確定足更新 | funding、板、会場、証拠金、TPとSL、未決済注文 | 対象外 |
 
 両者のスクリーナーは、直近の変動と20日レンジ突破をATR単位で測り、運用時に保有銘柄を除外する。
-ただし、StockCopilotは確定終値と市場別の更新状態を使い、TradingCopilotは24時間変動と暗号資産会場の流動性を使う。
+ただし、StockCopilotは確定終値と市場別の更新状態を使い、CryptoTradingCopilotは24時間変動と暗号資産会場の流動性を使う。
 共通なのは候補抽出の考え方であり、現時点の入力条件まで同一ではない。
 
 ## データと状態
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | 価格データ | yfinanceから日本株と米国株を取得する | Grvt、Hyperliquid、Decibelなど対象会場から取得する | 意図的差分 |
 | 確定足 | 市場時間、タイムゾーン、日足と週足の境界で形成中の足を除く | ローソク足の開始時刻と時間足の秒数で形成中の足を除く | 同期対象 |
@@ -85,7 +85,7 @@ StockCopilotの発注禁止は、TradingCopilotとの差を埋める対象では
 
 ## 指標と判定
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | 指標セット | RSI、MACD、EMA、Bollinger Bands、ATR、Stoch RSI、OBV、ADX、20本と60本の高安 | スイング分析では同じ指標セット | 共通化候補 |
 | 指標の実装 | [`lib/indicators.py`](../lib/indicators.py)の純粋なDataFrame計算 | `swing/_analyze.py`でAPI接続、整形、指標計算、表示を一つのスクリプトに持つ | 共通化候補 |
@@ -93,7 +93,7 @@ StockCopilotの発注禁止は、TradingCopilotとの差を埋める対象では
 | リスク計算 | 判断を提案するが、注文サイズを計算しない | 残高リスク、同時保有数、注文上限、TPとSLを注文プランへ反映する | 対象外 |
 
 指標計算は、現在もっともコード共有に近い。
-StockCopilotの`compute()`とTradingCopilotの`ind()`は同じ出力項目と期間を持つが、TradingCopilot側ではAPI接続と表示処理から分離されていない。
+StockCopilotの`compute()`とCryptoTradingCopilotの`ind()`は同じ出力項目と期間を持つが、CryptoTradingCopilot側ではAPI接続と表示処理から分離されていない。
 共有モジュールを先に作ると、StockCopilotから取引環境への依存が生じる可能性がある。
 
 最初に共有するなら、計算結果のテストベクトルが適している。
@@ -102,7 +102,7 @@ StockCopilotの`compute()`とTradingCopilotの`ind()`は同じ出力項目と期
 
 ## 出力と通知
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | 機械可読出力 | レポート用JSONをJSON Schemaと業務規則で検証する | 注文プランJSONを`ORDER_PLAN_SPEC.md`と`execute_orders.py`で検証する | 同期対象 |
 | 人間向け出力 | 自己完結HTMLとCLI表示 | Morning BriefのHTMLとCLI表示、スイング分析の対話出力 | 共通化候補 |
@@ -110,12 +110,12 @@ StockCopilotの`compute()`とTradingCopilotの`ind()`は同じ出力項目と期
 | 通知の経路 | Incoming WebhookをPythonコードから呼ぶ | Incoming WebhookをPythonコードから呼ぶ | 共通化候補 |
 
 両者とも、LLMが直接Slackへ投稿せず、決定的なコードが通知条件を判定する。
-ただし、StockCopilotは日次記録、TradingCopilotは発注と異常の通知なので、発火条件を共通化する対象にはしない。
+ただし、StockCopilotは日次記録、CryptoTradingCopilotは発注と異常の通知なので、発火条件を共通化する対象にはしない。
 Webhook送信のタイムアウト、エラー処理、本文エスケープは共通化できるが、小さな重複を除くためにプロジェクト間の依存を増やす価値はまだ測れていない。
 
 ## 開発と運用
 
-| 項目 | StockCopilot | TradingCopilot | 分類 |
+| 項目 | StockCopilot | CryptoTradingCopilot | 分類 |
 |---|---|---|---|
 | Python環境 | uvとPEP 723 | uvとPEP 723 | 同期対象 |
 | 実行パス | プロジェクト相対パス | プロジェクト相対パス | 同期対象 |
@@ -125,7 +125,7 @@ Webhook送信のタイムアウト、エラー処理、本文エスケープは�
 | 設計判断 | `docs/adr/`でプロジェクト境界、データ、出力、通知などを記録する | `docs/adr/`で指示ファイルと実行パスの判断を記録する | 同期対象 |
 
 テスト件数を同じにする必要はない。
-TradingCopilotでは、注文プラン検証、dry-run、発注ガード、TPとSLの部分失敗、二重発注防止の回帰テストが損失リスクに直結する。
+CryptoTradingCopilotでは、注文プラン検証、dry-run、発注ガード、TPとSLの部分失敗、二重発注防止の回帰テストが損失リスクに直結する。
 StockCopilotでは、市場別の確定足、公開禁止情報、中間表現の契約が優先される。
 
 ## 共通化候補の優先順位
@@ -137,7 +137,7 @@ StockCopilotでは、市場別の確定足、公開禁止情報、中間表現�
 | 確定足 | 時間を注入できる共通インターフェースと境界テストの観点 | 中 | 市場カレンダーと24時間市場で実装条件が違うため、関数共有は急がない |
 | 取得失敗の扱い | 空データと取得不能を区別する契約 | 中 | 語彙を統一するより、誤って正常扱いしないことを揃える |
 | Slack送信 | Webhook送信だけの小さなヘルパー | 低 | 通知ポリシーは異なり、現状の重複量では依存追加の効果が小さい |
-| スキル配置 | `.agents/skills/`と`CLAUDE.md`橋渡しの構成 | 中 | TradingCopilotのGit管理を始めるときに版管理単位を揃えられる |
+| スキル配置 | `.agents/skills/`と`CLAUDE.md`橋渡しの構成 | 中 | CryptoTradingCopilotのGit管理を始めるときに版管理単位を揃えられる |
 | JSON契約 | スキーマバージョン、検証、生成と消費の分離という設計パターン | 中 | レポートと注文では語彙も失敗時の影響も違うため、スキーマ自体は共有しない |
 
 共通化は、共有パッケージの作成だけを指さない。
@@ -147,9 +147,9 @@ StockCopilotでは、市場別の確定足、公開禁止情報、中間表現�
 
 次の領域は、現在の安全境界を保つために共有対象から外す。
 
-- StockCopilotの保有読み込みとTradingCopilotの会場別ポジション取得
-- StockCopilotのレポートスキーマとTradingCopilotの注文プランスキーマ
-- TradingCopilotの認証、残高、注文、キャンセル、TP、SLの処理
+- StockCopilotの保有読み込みとCryptoTradingCopilotの会場別ポジション取得
+- StockCopilotのレポートスキーマとCryptoTradingCopilotの注文プランスキーマ
+- CryptoTradingCopilotの認証、残高、注文、キャンセル、TP、SLの処理
 - 両プロジェクトの通知発火条件
 - 決算情報とfundingなど、資産クラスに固有の分析材料
 
@@ -167,14 +167,14 @@ StockCopilotでは、市場別の確定足、公開禁止情報、中間表現�
 | ATR正規化や20日レンジの意味を片側で変更した | スクリーニングの振る舞いの契約 |
 | 空データを取得不能と誤認する不具合が発生した | 取得結果の状態と失敗時の契約 |
 | Webhookの再送、タイムアウト、エスケープを両側で直す必要が生じた | Slack送信ヘルパー |
-| TradingCopilotがGit管理とCIを始めた | スキル配置、共通テスト、共有パッケージの配布方法 |
+| CryptoTradingCopilotがGit管理とCIを始めた | スキル配置、共通テスト、共有パッケージの配布方法 |
 | 共通OHLCVで両実装の結果が一致しなくなった | コピー流用の継続可否と共有モジュール化 |
 
 ## 更新契機
 
 次のファイルや規範を変更するときは、関連する比較表と共通化候補を確認する。
 
-| 領域 | StockCopilot | TradingCopilot |
+| 領域 | StockCopilot | CryptoTradingCopilot |
 |---|---|---|
 | 指標 | `lib/indicators.py` | `swing/_analyze.py` |
 | 確定足とデータ取得 | `lib/datasource.py` | `morning_signal.py`、`swing/_analyze.py` |

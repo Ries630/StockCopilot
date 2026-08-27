@@ -40,9 +40,12 @@ ADR の役目。
   なく、取り消しコストも低い。理由は `AGENTS.md` と `ruff.toml` に置いてある
 - **発注機能を持たないこと** — 規範としては最上位だが、代替を検討して落とした記録が無い。
   隔離の理由は [ADR-0001](0001-separate-sibling-project.md) の結果節にある
-- **StockCopilot と TradingCopilot の現行機能差** — 正は
+- **StockCopilot と CryptoTradingCopilot の現行機能差** — 正は
   [`docs/sibling-project-comparison.md`](../sibling-project-comparison.md)。
   将来の設計判断ではなく、実装に合わせて更新する比較表として管理する
+- **兄弟プロジェクトの表示名への追随**（[#89](https://github.com/Ries630/StockCopilot/issues/89)）
+  — 外部プロジェクトの名称変更であり、設計判断ではない。現行名の正は
+  [`docs/sibling-project-comparison.md`](../sibling-project-comparison.md) とする
 - **ジャーナルの書式**（[#19](https://github.com/Ries630/StockCopilot/issues/19)）
   — 正は `journal/README.md` にあり、ADR にすると二重管理になる
 - **Investment 生成物の既定入力先**（[#87](https://github.com/Ries630/StockCopilot/issues/87)）
