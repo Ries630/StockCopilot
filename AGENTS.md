@@ -1,7 +1,7 @@
 # StockCopilot — エージェント向けプロジェクトガイド
 
 株式 (日本株・米国株、現物) のスクリーニングと保有分析。**発注機能は持たない** (分析・提案のみ)。
-TradingCopilot (仮想通貨) の兄弟プロジェクト ([ADR-0001](docs/adr/0001-separate-sibling-project.md))。
+CryptoTradingCopilot (仮想通貨) の兄弟プロジェクト ([ADR-0001](docs/adr/0001-separate-sibling-project.md))。
 両プロジェクトの機能差、意図的差分、共通化候補は
 [`docs/sibling-project-comparison.md`](docs/sibling-project-comparison.md) を正とする。
 関連領域を変更するときは、同文書の比較表と更新契機を確認する。
@@ -49,7 +49,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 ## 構成
 
 - `lib/datasource.py` — 株価取得アダプタ (yfinance)。差し替えはこのファイルに閉じる
-- `lib/indicators.py` — 指標エンジン (TradingCopilot `swing/_analyze.py` から移植。pandas + ta)
+- `lib/indicators.py` — 指標エンジン (CryptoTradingCopilot `swing/_analyze.py` から移植。pandas + ta)
 - `lib/earnings.py` — 決算注記。analyze.py と screen.py が共用 (警告期間と文言の正)
   → [ADR-0012](docs/adr/0012-shared-earnings-module.md)
 - `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)。
@@ -109,7 +109,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - **Investment**: 実入力ディレクトリの正は `lib/holdings.py` の `INVESTMENT_OUTPUT`。
   `report_data_*.json` の `stock.holdings` を読むだけ。module import はしない (疎結合)。
   Investment 側のファイルを書き換えないこと。
-- **TradingCopilot**: コード共有はしない (コピー流用の慣習)。指標エンジンの移植元
+- **CryptoTradingCopilot**: コード共有はしない (コピー流用の慣習)。指標エンジンの移植元
   → [ADR-0001](docs/adr/0001-separate-sibling-project.md)
 - **dexter-jp** (`~/Repositories/dexter-jp`): ファンダ特化の日本株リサーチエージェント (TS/Bun)。
   役割分担 = テクニカル・スクリーニングは本プロジェクト (決定的コード)、

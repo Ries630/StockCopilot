@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["yfinance>=0.2.40", "pandas", "numpy", "ta"]
 # ///
-"""保有/指定銘柄のテクニカル分析 (TradingCopilot swing/_analyze.py の株式版)。
+"""保有/指定銘柄のテクニカル分析 (CryptoTradingCopilot swing/_analyze.py の株式版)。
 
 対象銘柄はコマンドライン引数で渡す (例: uv run analyze.py 7203 AAPL)。
 省略時は Investment の保有銘柄すべて。

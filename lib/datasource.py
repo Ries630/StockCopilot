@@ -9,7 +9,7 @@
 
 **形成中の足は必ず除外する。** ブレイクアウト判定は確定足前提のため、
 未確定の足を混ぜると「抜けた」が引け後に戻る誤検知になる
-(TradingCopilot swing/_analyze.py の drop_forming_bar と同じ思想)。
+(CryptoTradingCopilot swing/_analyze.py の drop_forming_bar と同じ思想)。
 株式は 24/7 の crypto と違い取引所カレンダーがあるので、
 市場ごとの引け時刻 (JP=15:30 JST / US=16:00 ET) で判定する。
 """
