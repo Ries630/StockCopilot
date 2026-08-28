@@ -7,9 +7,7 @@ StockCopilot側で確認した両プロジェクトの機能差、意図的差�
 関連領域を変更するときは、同文書の確認日、基準コミット、更新契機を確認する。
 
 **設計判断の理由・却下した代替・その時点の測定値は [`docs/adr/`](docs/adr/README.md) にある。**
-このファイルには結論とリンクだけを置く。判断を変えるときは新しい ADR を書いてから実装する
-(`adr` skill)。遡り作成の一次資料になった設計メモは
-`~/.claude/plans/tradingcopilot-trading-copilot-morning-b-toasty-duckling.md`。
+このファイルには結論とリンクだけを置く。ADR の要否・書式・更新手順は `adr` skill を正とする。
 
 ## 環境前提
 
