@@ -212,5 +212,5 @@ CI (GitHub Actions) が pull request と main への push で lint・テスト�
 
 ## 設計判断の記録
 
-[`docs/adr/`](docs/adr/README.md) に ADR として残している。判断を変えるときは本文を
-書き換えず、新しい ADR を書いて古い方のステータスを `廃止` に変える。
+判断履歴と一覧は [`docs/adr/`](docs/adr/README.md) にある。
+ADR の要否・書式・更新手順は `adr` skill を正とする。
