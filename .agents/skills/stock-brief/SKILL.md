@@ -87,10 +87,7 @@ uv run analyze.py --market us  # USがupdated / initialのときだけ
 `unchanged` / `unavailable`市場では`analyze.py`を呼ばない。両市場とも該当する場合は保有の
 分析呼び出しをすべて飛ばし、STEP 4で前回結果を引き継ぐ。
 
-シリーズ分析の起点は `reports/latest.json` (前回の中間表現)。**無ければ
-`journal/journal.md` の最終エントリを読む** — 2026-08-20 までのエントリは定型の分析を
-含んでいる。この fallback は移行期のためのもので、JSON が溜まったら消す
-(→ [`docs/adr/0025-journal-as-ledger-and-memo.md`](../../../docs/adr/0025-journal-as-ledger-and-memo.md))。
+シリーズ分析の起点は `stock-check` の「前回の中間表現と執行記録の読み込み」に従う。
 
 ## STEP 3. 中間表現 JSON
 
@@ -102,8 +99,7 @@ STEP 1・2 の更新市場の結果を `reports/YYYY-MM-DD_evening.draft.json` �
 
 **キー・型・必須・語彙の正は
 [`docs/report-contract.schema.json`](../../../docs/report-contract.schema.json)、意味と組み合わせの正は
-[`docs/report-contract.md`](../../../docs/report-contract.md)。** このファイルに写経しないこと
-(二重管理になり、必ずどちらかが先に古くなる)。
+[`docs/report-contract.md`](../../../docs/report-contract.md)。** このファイルに契約を複製しない。
 
 書くときの要点だけ挙げる:
 
@@ -226,9 +222,4 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 - **候補ゼロを失敗と扱わない。** 母集団が狭いので出ない日のほうが多い
 - **`reports/` の中身をリポジトリの追跡対象ファイルに貼らない。** Issue・PR・
   コミットメッセージに銘柄や株数を書かない (必要なら「保有銘柄A」に置き換える)
-- **外部参照 (Web / IR) を行わない。** 定期実行は無人で、外部情報が判断に入る前に
-  人が検証できないため。決算日が取得できない銘柄は「不明」と明記して進み、判断は
-  `決算後に再判定` に倒す。**これは劣化ではなく設計どおりの挙動**
-  (→ [`docs/adr/0016-surface-unavailable-earnings-date.md`](../../../docs/adr/0016-surface-unavailable-earnings-date.md))。
-  可否の正は [`docs/output-contract.md`](../../../docs/output-contract.md) の
-  「実行モードと外部参照」で、**対話実行では引いてよい**
+- 外部参照の可否は [`docs/output-contract.md`](../../../docs/output-contract.md) の「実行モードと外部参照」に従う。stock-brief は同契約の定期実行モードとして扱う。
