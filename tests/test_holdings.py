@@ -118,6 +118,61 @@ def test_load_holdings_without_market_section(report_file) -> None:
     assert {h["as_of"] for h in holdings.load_holdings()} == {"2026-07-22"}
 
 
+def _write_report(directory: Path, name: str, data: dict) -> None:
+    """report_data を指定ディレクトリに書く。"""
+    (directory / name).write_text(json.dumps(data, ensure_ascii=False))
+
+
+def test_latest_report_path_skips_report_without_holdings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """最新が stock.holdings を欠くなら、持つファイルまで遡り、遡ったことを出す。
+
+    最新ファイルを無条件に採ると保有 0 件になり、analyze.py --market の
+    保有モードが空振りする。
+    """
+    monkeypatch.setattr(holdings, "INVESTMENT_OUTPUT", tmp_path)
+    _write_report(tmp_path, "report_data_20260731.json", _report())
+    _write_report(tmp_path, "report_data_20260929.json", _report(stock={"as_of": "2026-09-29"}))
+
+    assert holdings.latest_report_path().name == "report_data_20260731.json"
+    assert {h["ticker"] for h in holdings.load_holdings()} == {"9999", "VTI"}
+    err = capsys.readouterr().err
+    assert "report_data_20260929.json は stock.holdings を持たない" in err
+    assert "report_data_20260731.json の保有を使う" in err
+
+
+def test_latest_report_path_keeps_empty_holdings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """空の stock.holdings は「保有 0 件」として有効なので遡らない。"""
+    monkeypatch.setattr(holdings, "INVESTMENT_OUTPUT", tmp_path)
+    _write_report(tmp_path, "report_data_20260731.json", _report())
+    _write_report(
+        tmp_path,
+        "report_data_20260929.json",
+        _report(stock={"as_of": "2026-09-29", "holdings": []}),
+    )
+
+    assert holdings.latest_report_path().name == "report_data_20260929.json"
+    assert capsys.readouterr().err == ""
+
+
+def test_latest_report_path_without_any_holdings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """どの report_data も stock.holdings を持たなければ空扱いにせず失敗させる。"""
+    monkeypatch.setattr(holdings, "INVESTMENT_OUTPUT", tmp_path)
+    _write_report(tmp_path, "report_data_20260929.json", {"stock": {}})
+
+    with pytest.raises(FileNotFoundError, match="stock.holdings"):
+        holdings.latest_report_path()
+
+
 # --- held_tickers: 実効保有の合成 ---
 
 
