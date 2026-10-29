@@ -105,7 +105,7 @@ def _has_stock_holdings(path: Path) -> bool:
     """report_data が株式保有の一覧 (stock.holdings) を持つかを返す。
 
     空リストは「保有 0 件」という有効な状態なので持つ側に数える。
-    キーが無い・リストでない・JSON として読めない場合だけ持たない扱いにする。
+    キーが無い・リストでない・UTF-8 や JSON として読めない場合だけ持たない扱いにする。
 
     Args:
         path: report_data_YYYYMMDD.json のパス。
@@ -115,7 +115,8 @@ def _has_stock_holdings(path: Path) -> bool:
     """
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    # JSONDecodeError と UnicodeDecodeError はどちらも ValueError の派生
+    except (OSError, ValueError):
         return False
     stock = data.get("stock") if isinstance(data, dict) else None
     return isinstance(stock, dict) and isinstance(stock.get("holdings"), list)

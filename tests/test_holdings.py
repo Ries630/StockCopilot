@@ -144,6 +144,17 @@ def test_latest_report_path_skips_report_without_holdings(
     assert "report_data_20260731.json の保有を使う" in err
 
 
+def test_latest_report_path_skips_undecodable_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UTF-8 として読めない最新ファイルでも止まらず、読める過去ファイルへ遡る。"""
+    monkeypatch.setattr(holdings, "INVESTMENT_OUTPUT", tmp_path)
+    _write_report(tmp_path, "report_data_20260731.json", _report())
+    (tmp_path / "report_data_20260929.json").write_bytes(b"\xff\xfe{")
+
+    assert holdings.latest_report_path().name == "report_data_20260731.json"
+
+
 def test_latest_report_path_keeps_empty_holdings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
