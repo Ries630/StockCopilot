@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,13 +64,20 @@ def _resolve_as_of(
 
 
 def latest_report_path() -> Path:
-    """最新の report_data_YYYYMMDD.json のパスを返す。
+    """株式保有 (stock.holdings) を持つ最新の report_data_YYYYMMDD.json のパスを返す。
+
+    Investment の生成物は stock.holdings を欠くことがある。最新ファイルを無条件に
+    採ると保有が 0 件になり、analyze.py の保有モードは空振りし、screen.py の
+    母集団除外も効かなくなる。そこで stock.holdings を持つファイルまで遡り、
+    読み飛ばしたファイルは stderr に出す (黙って古いファイルを使わない)。
+    遡った場合の基準日は保有ヘッダの as_of と経過日数に現れる。
 
     Returns:
-        最新ファイルの Path。
+        stock.holdings を持つ最新ファイルの Path。
 
     Raises:
-        FileNotFoundError: report_data が 1 件も無い場合。
+        FileNotFoundError: report_data が 1 件も無い場合、または
+            どの report_data も stock.holdings を持たない場合。
     """
     files = sorted(
         p for p in INVESTMENT_OUTPUT.glob("report_data_*.json")
@@ -77,7 +85,41 @@ def latest_report_path() -> Path:
     )
     if not files:
         raise FileNotFoundError(f"report_data_*.json が見つからない: {INVESTMENT_OUTPUT}")
-    return files[-1]
+    skipped: list[str] = []
+    for path in reversed(files):
+        if _has_stock_holdings(path):
+            if skipped:
+                print(
+                    f"[warn] {', '.join(skipped)} は stock.holdings を持たないため "
+                    f"{path.name} の保有を使う",
+                    file=sys.stderr,
+                )
+            return path
+        skipped.append(path.name)
+    raise FileNotFoundError(
+        f"stock.holdings を持つ report_data_*.json が見つからない: {INVESTMENT_OUTPUT}"
+    )
+
+
+def _has_stock_holdings(path: Path) -> bool:
+    """report_data が株式保有の一覧 (stock.holdings) を持つかを返す。
+
+    空リストは「保有 0 件」という有効な状態なので持つ側に数える。
+    キーが無い・リストでない・UTF-8 や JSON として読めない場合だけ持たない扱いにする。
+
+    Args:
+        path: report_data_YYYYMMDD.json のパス。
+
+    Returns:
+        stock.holdings がリストなら True。
+    """
+    try:
+        data = json.loads(path.read_text())
+    # JSONDecodeError と UnicodeDecodeError はどちらも ValueError の派生
+    except (OSError, ValueError):
+        return False
+    stock = data.get("stock") if isinstance(data, dict) else None
+    return isinstance(stock, dict) and isinstance(stock.get("holdings"), list)
 
 
 def load_holdings() -> list[dict]:

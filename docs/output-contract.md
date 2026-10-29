@@ -51,6 +51,11 @@
 （閾値は `analyze.py` の `STALE_DAYS`）。執行記録の網羅性に触れたうえで
 Investment の同期を提案する。
 
+**最新の `report_data` が `stock.holdings` を欠く場合は、持つファイルまで遡る。**
+遡ったときは `[warn] ... は stock.holdings を持たないため ... の保有を使う` が stderr に出て、
+ヘッダの `as_of` は遡った先の基準日になる。保有が空になったとは扱わない
+（正は `lib/holdings.py` の `latest_report_path()`）。
+
 ### 実効保有
 
 保有は `as_of` 時点の保有とジャーナルの執行記録の合成で確定する
