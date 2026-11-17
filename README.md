@@ -48,8 +48,9 @@ flowchart LR
 - **保有は経路によって役割が反転する。** `screen.py` では除外フィルタ、
   `stock-check` では入力そのもの ([ADR-0010](docs/adr/0010-three-layer-universe.md))
 - **判断ラベルは 2 系統で別物。** 候補側と保有側で語彙を共有しない
-- **保有は Investment の生成物そのものではない。** `held_tickers()` がジャーナルの執行記録を
-  合成した実効保有を返す ([ADR-0015](docs/adr/0015-journal-executions-machine-read.md))
+- **保有は Investment の生成物そのものではない。** `effective_holdings()` がジャーナルの執行記録を
+  合成した実効保有を返す ([ADR-0015](docs/adr/0015-journal-executions-machine-read.md) /
+  [ADR-0031](docs/adr/0031-effective-holdings-for-analyze.md))
 - **夕方ブリーフは中間表現 JSON を挟む。** HTML レポートと Slack 通知はどちらもそれだけを
   入力にし、**通知でメンションを鳴らす条件を LLM の裁量から外している**
   ([ADR-0020](docs/adr/0020-intermediate-report-json.md) /

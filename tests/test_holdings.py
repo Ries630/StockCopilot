@@ -100,22 +100,22 @@ def test_resolve_as_of_ignores_empty_override() -> None:
     )
 
 
-def test_load_holdings_assigns_per_class_as_of(report_file) -> None:
+def test_snapshot_holdings_assigns_per_class_as_of(report_file) -> None:
     """銘柄ごとに、その口座の資産クラスの as_of が付く。"""
     report_file(_report())
-    by_ticker = {h["ticker"]: h for h in holdings.load_holdings()}
+    by_ticker = {h["ticker"]: h for h in holdings.effective_holdings().holdings}
     assert by_ticker["9999"]["as_of"] == "2026-07-22"
     assert by_ticker["9999"]["as_of_source"] == "stock_as_of"
     assert by_ticker["VTI"]["as_of"] == "2026-06-30"
     assert by_ticker["VTI"]["as_of_source"] == "wealthnavi_as_of"
 
 
-def test_load_holdings_without_market_section(report_file) -> None:
+def test_snapshot_holdings_without_market_section(report_file) -> None:
     """market セクションが無くても stock.as_of で動く (後方互換)。"""
     data = _report()
     del data["market"]
     report_file(data)
-    assert {h["as_of"] for h in holdings.load_holdings()} == {"2026-07-22"}
+    assert {h["as_of"] for h in holdings.effective_holdings().holdings} == {"2026-07-22"}
 
 
 def _write_report(directory: Path, name: str, data: dict) -> None:
@@ -138,7 +138,7 @@ def test_latest_report_path_skips_report_without_holdings(
     _write_report(tmp_path, "report_data_20260929.json", _report(stock={"as_of": "2026-09-29"}))
 
     assert holdings.latest_report_path().name == "report_data_20260731.json"
-    assert {h["ticker"] for h in holdings.load_holdings()} == {"9999", "VTI"}
+    assert {h["ticker"] for h in holdings.effective_holdings().holdings} == {"9999", "VTI"}
     err = capsys.readouterr().err
     assert "report_data_20260929.json は stock.holdings を持たない" in err
     assert "report_data_20260731.json の保有を使う" in err
@@ -184,7 +184,7 @@ def test_latest_report_path_without_any_holdings(
         holdings.latest_report_path()
 
 
-# --- held_tickers: 実効保有の合成 ---
+# --- effective_holdings: 実効保有の合成 ---
 
 
 @pytest.fixture(autouse=True)
@@ -216,10 +216,10 @@ def _patch_executions(
     monkeypatch.setattr(holdings, "load_executions", lambda: (executions, list(warnings or [])))
 
 
-def test_held_tickers_without_executions(report_file) -> None:
+def test_effective_holdings_without_executions(report_file) -> None:
     """執行記録が無ければ Investment の保有そのものになる。"""
     report_file(_report())
-    held = holdings.held_tickers()
+    held = holdings.effective_holdings()
     assert held.tickers == {"9999", "VTI"}
     assert (held.executions_read, held.executions_applied) == (0, 0)
 
@@ -230,21 +230,21 @@ def test_execution_adds_ticker_bought_after_as_of(
     """as_of 以降に買った銘柄は保有に入る (実害のある方向の修正)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-25", "5555", 100))
-    assert "5555" in holdings.held_tickers().tickers
+    assert "5555" in holdings.effective_holdings().tickers
 
 
 def test_execution_removes_ticker_sold_out(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
     """残 0 株の執行があれば保有から外れる (母集団に戻る)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-25", "9999", 0))
-    assert holdings.held_tickers().tickers == {"VTI"}
+    assert holdings.effective_holdings().tickers == {"VTI"}
 
 
 def test_execution_before_as_of_is_ignored(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
     """as_of より前の執行は Investment の保有に含まれているので反映しない。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-20", "9999", 0))
-    held = holdings.held_tickers()
+    held = holdings.effective_holdings()
     assert "9999" in held.tickers
     assert (held.executions_read, held.executions_applied) == (1, 0)
 
@@ -255,7 +255,7 @@ def test_execution_on_the_as_of_day_is_applied(
     """基準日と同日の執行はジャーナルを優先する (誤っても低実害側に倒れる)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-22", "9999", 0))
-    assert "9999" not in holdings.held_tickers().tickers
+    assert "9999" not in holdings.effective_holdings().tickers
 
 
 def test_execution_uses_per_class_as_of(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -267,21 +267,21 @@ def test_execution_uses_per_class_as_of(report_file, monkeypatch: pytest.MonkeyP
     """
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-01", "VTI", 0))
-    assert holdings.held_tickers().tickers == {"9999"}
+    assert holdings.effective_holdings().tickers == {"9999"}
 
 
 def test_latest_execution_wins(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
     """同一銘柄に複数件あれば日付が新しい行が効く (残株数は絶対値)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-26", "9999", 0), ("2026-07-25", "9999", 100))
-    assert "9999" not in holdings.held_tickers().tickers
+    assert "9999" not in holdings.effective_holdings().tickers
 
 
 def test_same_day_last_line_wins(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
     """同日に複数件あれば後に書かれた行が効く (ジャーナルは追記専用)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-25", "9999", 0), ("2026-07-25", "9999", 100))
-    assert "9999" in holdings.held_tickers().tickers
+    assert "9999" in holdings.effective_holdings().tickers
 
 
 def test_journal_warnings_are_passed_through(
@@ -290,12 +290,12 @@ def test_journal_warnings_are_passed_through(
     """解釈できなかった行は呼び出し側まで届ける (黙って除外を不完全にしない)。"""
     report_file(_report())
     _patch_executions(monkeypatch, ("2026-07-25", "9999", 0), warnings=["84 行目: 残株数が読めない"])
-    held = holdings.held_tickers()
+    held = holdings.effective_holdings()
     assert held.warnings == ["84 行目: 残株数が読めない"]
     assert (held.executions_read, held.executions_applied) == (1, 1)
 
 
-def test_held_tickers_reads_the_journal_file(
+def test_effective_holdings_reads_the_journal_file(
     report_file, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """既定のパスのジャーナルを実際に読んで合成する (パーサとの結線の確認)。"""
@@ -307,6 +307,76 @@ def test_held_tickers_reads_the_journal_file(
         encoding="utf-8",
     )
     monkeypatch.setattr(journal, "JOURNAL_PATH", path)
-    held = holdings.held_tickers()
+    held = holdings.effective_holdings()
     assert held.tickers == {"VTI"}
     assert held.executions_applied == 1
+
+
+def test_bought_after_as_of_has_journal_row(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
+    """as_of 以降に新規に買った銘柄は、残株数と約定日つきの行になる。
+
+    Investment に行が無いので、銘柄名・口座は分からないまま空にする (推測で埋めない)。
+    市場はティッカーから推定する。
+    """
+    report_file(_report())
+    _patch_executions(monkeypatch, ("2026-07-25", "5555", 300))
+    row = {h["ticker"]: h for h in holdings.effective_holdings().holdings}["5555"]
+    assert row == {
+        "ticker": "5555",
+        "name": "",
+        "market": "jp",
+        "quantity": 300,
+        "account": "",
+        "class": "",
+        "as_of": "2026-07-25",
+        "as_of_source": holdings.JOURNAL_SOURCE,
+    }
+
+
+def test_partial_sale_updates_quantity(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
+    """一部売却は株数を残株数に置き換え、銘柄名と口座は Investment から引き継ぐ。"""
+    report_file(_report())
+    _patch_executions(monkeypatch, ("2026-07-25", "9999", 40))
+    rows = [h for h in holdings.effective_holdings().holdings if h["ticker"] == "9999"]
+    assert len(rows) == 1
+    assert rows[0]["quantity"] == 40
+    assert (rows[0]["name"], rows[0]["account"]) == ("テスト銘柄", "楽天 NISA")
+    assert rows[0]["as_of_source"] == holdings.JOURNAL_SOURCE
+
+
+def test_sold_out_ticker_has_no_row(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
+    """売り切った銘柄は行ごと消える (持っていない銘柄に判断を付けない)。"""
+    report_file(_report())
+    _patch_executions(monkeypatch, ("2026-07-25", "9999", 0))
+    assert [h["ticker"] for h in holdings.effective_holdings().holdings] == ["VTI"]
+
+
+def test_multi_account_ticker_collapses_to_one_row(
+    report_file, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """残株数は銘柄単位の合計なので、複数口座の銘柄は 1 行にまとめ、口座を併記する。"""
+    data = _report()
+    data["stock"]["holdings"].append(
+        {
+            "ticker": "9999",
+            "name": "テスト銘柄",
+            "region": "日本",
+            "quantity": 50,
+            "account": "SBI 特定",
+            "class": "国内株式",
+        }
+    )
+    report_file(data)
+    _patch_executions(monkeypatch, ("2026-07-25", "9999", 120))
+    rows = [h for h in holdings.effective_holdings().holdings if h["ticker"] == "9999"]
+    assert len(rows) == 1
+    assert rows[0]["quantity"] == 120
+    assert rows[0]["account"] == "楽天 NISA・SBI 特定"
+
+
+def test_unapplied_ticker_keeps_snapshot_row(report_file, monkeypatch: pytest.MonkeyPatch) -> None:
+    """執行の無い銘柄は Investment の行をそのまま使う。"""
+    report_file(_report())
+    _patch_executions(monkeypatch, ("2026-07-25", "5555", 300))
+    vti = {h["ticker"]: h for h in holdings.effective_holdings().holdings}["VTI"]
+    assert (vti["quantity"], vti["as_of_source"]) == (1.5, "wealthnavi_as_of")

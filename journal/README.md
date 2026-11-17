@@ -69,9 +69,11 @@
 `as_of` の鮮度に依存しなくなる代わりに、**この節の網羅性が保有の正しさそのもの**になる。
 
 **`lib/journal.py` が機械可読に読む。** 読むのは各行の**約定日 / 銘柄 / 残株数の 3 つ**だけで、
-`screen.py` の母集団除外がこれを Investment の保有と合成して実効保有を組む
-（[ADR-0015](../docs/adr/0015-journal-executions-machine-read.md)）。解釈できなかった行は
-`screen.py` の実行時に行番号付きの警告として出る（黙って無視はされない）。
+`lib/holdings.py` がこれを Investment の保有と合成して実効保有を組み、`screen.py` の
+母集団除外と `analyze.py` の保有モードが同じ結果を使う
+（[ADR-0015](../docs/adr/0015-journal-executions-machine-read.md) /
+[ADR-0031](../docs/adr/0031-effective-holdings-for-analyze.md)）。解釈できなかった行は
+両方の実行時に行番号付きの警告として出る（黙って無視はされない）。
 
 ### 書式
 
