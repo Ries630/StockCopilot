@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -113,8 +114,10 @@ def _recent_past(seen: list[dt.date], today: dt.date) -> dt.date | None:
 def _remember(key: str, fetched: dt.date | None, today: dt.date) -> list[dt.date]:
     """取得した決算日を記録に足し、その銘柄の記録を返す。
 
-    警告期間より前に過ぎた日は使い道が無いので消す。記録が読めない・書けない場合も
-    注記は止めない (取得値だけで判定する従来の動作に戻るだけ)。
+    警告期間より前に過ぎた日は使い道が無いので消す。まだ来ていない日で今回の取得値と
+    違うものも消す。推定日から確定日への変更や延期で置き換わった予定で、残すと
+    実際には無かった決算日で「直近決算」の警告を出すことになる。
+    記録が読めない・書けない場合も注記は止めない (取得値だけで判定する従来の動作に戻るだけ)。
 
     Args:
         key: "市場:大文字ティッカー"。
@@ -135,24 +138,33 @@ def _remember(key: str, fetched: dt.date | None, today: dt.date) -> list[dt.date
         records = {}
 
     dates: set[dt.date] = set()
-    for value in records.get(key, []):
+    values = records.get(key)
+    for value in values if isinstance(values, list) else []:
         try:
             dates.add(dt.date.fromisoformat(value))
         except (TypeError, ValueError):
             continue
     if fetched is not None:
         dates.add(fetched)
-    kept = sorted(d for d in dates if (today - d).days <= EARNINGS_ALERT_DAYS)
+    kept = sorted(
+        d
+        for d in dates
+        if (today - d).days <= EARNINGS_ALERT_DAYS
+        and (fetched is None or d <= today or d == fetched)
+    )
 
     records[key] = [d.isoformat() for d in kept]
     if not kept:
         del records[key]
     try:
         EARNINGS_SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        EARNINGS_SEEN_PATH.write_text(
+        # 書きかけのファイルを次の読み込みが「壊れた記録」と見なさないよう、置き換えで書く
+        tmp = EARNINGS_SEEN_PATH.with_suffix(".tmp")
+        tmp.write_text(
             json.dumps(records, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        os.replace(tmp, EARNINGS_SEEN_PATH)
     except OSError as e:
         print(f"[warn] 決算日の記録を書けない ({e})", file=sys.stderr)
     return kept

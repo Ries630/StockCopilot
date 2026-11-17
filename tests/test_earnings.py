@@ -202,3 +202,25 @@ def test_broken_record_does_not_stop_the_note(
     note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 11))
     assert note.startswith("決算 2027-02-10")
     assert "決算日の記録を読めない" in capsys.readouterr().err
+
+
+def test_moved_up_schedule_is_not_remembered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """推定日が前倒しの確定日に置き換わったら、推定日では警告しない (実在しない決算日)。"""
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 20))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 10, 20))
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 4))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 1))
+    _patch_earnings(monkeypatch, FEB10)
+    assert earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 21)).startswith(
+        "決算 2027-02-10"
+    )
+
+
+def test_postponed_schedule_is_not_remembered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """延期で置き換わった元の予定日を、過ぎたあとに「直近決算」と扱わない (まだ決算前)。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 10, 20))
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 25))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 1))
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 12))
+    assert note == "決算 2026-11-25 (あと 13 日)"
