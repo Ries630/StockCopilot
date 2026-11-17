@@ -7,10 +7,17 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 
 from lib import earnings
+
+
+@pytest.fixture(autouse=True)
+def _isolate_seen(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算日の記録を実行環境の data/ に書かせない (結果を実行環境に依存させない)。"""
+    monkeypatch.setattr(earnings, "EARNINGS_SEEN_PATH", tmp_path / "earnings_seen.json")
 
 
 def _patch_earnings(monkeypatch: pytest.MonkeyPatch, day: dt.date | None) -> None:
@@ -118,3 +125,121 @@ def test_earnings_note_old_past_has_no_warning(monkeypatch: pytest.MonkeyPatch) 
     note = earnings.earnings_note("9999", "jp")
     assert not note.startswith("⚠")
     assert "30 日前" in note
+
+
+# --- 決算日の記録: 決算直後に次回の予定日へ切り替わっても警告を落とさない ---
+
+NOV10 = dt.date(2026, 11, 10)
+FEB10 = dt.date(2027, 2, 10)
+
+
+def test_rollover_after_earnings_keeps_reaction_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """前日に見た決算日が、翌日の取得で次回の予定日に変わっても直近決算の警告を出す。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, FEB10)
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 11))
+    assert note == (
+        "⚠ 直近決算 2026-11-10 (1 日前) — 直近の値動きは決算反応の可能性 (次回 2027-02-10)"
+    )
+
+
+def test_rollover_warning_lasts_through_alert_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """切り替わった後の実行でも、警告期間の終わりまで記録から警告を出し続ける。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=NOV10)
+    _patch_earnings(monkeypatch, FEB10)
+    last = NOV10 + dt.timedelta(days=earnings.EARNINGS_ALERT_DAYS)
+    earnings.earnings_note("9999", "jp", today=NOV10 + dt.timedelta(days=1))
+    assert earnings.earnings_note("9999", "jp", today=last).startswith("⚠ 直近決算 2026-11-10")
+    after = earnings.earnings_note("9999", "jp", today=last + dt.timedelta(days=1))
+    assert after.startswith("決算 2027-02-10")
+
+
+def test_rollover_when_date_becomes_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算直後に取得できなくなっても、「不明」ではなく記録した決算日で警告する。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, "equity")
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 12))
+    assert note == "⚠ 直近決算 2026-11-10 (2 日前) — 直近の値動きは決算反応の可能性"
+
+
+def test_upcoming_earnings_wins_over_recent_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """取得値自体が警告期間内なら取得値で注記する (記録はその取りこぼしを補うだけ)。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=NOV10)
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 13))
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 11))
+    assert note.startswith("⚠ 決算 2026-11-13 (あと 2 日)")
+
+
+def test_records_are_per_ticker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """記録は市場とティッカーごとに分け、別の銘柄の決算日で警告しない。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=NOV10)
+    _patch_earnings(monkeypatch, FEB10)
+    assert earnings.earnings_note("8888", "jp", today=dt.date(2026, 11, 11)).startswith("決算 2027")
+
+
+def test_old_records_are_pruned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """警告期間より前に過ぎた決算日は記録から消す (記録を際限なく増やさない)。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=NOV10)
+    _patch_earnings(monkeypatch, FEB10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 12, 1))
+    recorded = json.loads(earnings.EARNINGS_SEEN_PATH.read_text(encoding="utf-8"))
+    assert recorded == {"jp:9999": ["2027-02-10"]}
+
+
+def test_broken_record_does_not_stop_the_note(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """記録が壊れていても注記は止めず、取得値で判定したことを警告する。"""
+    earnings.EARNINGS_SEEN_PATH.write_text("{broken", encoding="utf-8")
+    _patch_earnings(monkeypatch, FEB10)
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 11))
+    assert note.startswith("決算 2027-02-10")
+    assert "決算日の記録を読めない" in capsys.readouterr().err
+
+
+def test_moved_up_schedule_is_not_remembered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """推定日が前倒しの確定日に置き換わったら、推定日では警告しない (実在しない決算日)。"""
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 20))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 10, 20))
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 4))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 1))
+    _patch_earnings(monkeypatch, FEB10)
+    assert earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 21)).startswith(
+        "決算 2027-02-10"
+    )
+
+
+def test_postponed_schedule_is_not_remembered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """延期で置き換わった元の予定日を、過ぎたあとに「直近決算」と扱わない (まだ決算前)。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 10, 20))
+    _patch_earnings(monkeypatch, dt.date(2026, 11, 25))
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 1))
+    note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 12))
+    assert note == "決算 2026-11-25 (あと 13 日)"
+
+
+def test_same_day_rollover_keeps_gap_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算の当日に取得値が次回日へ切り替わっても、当日のギャップ警告を出す。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, FEB10)
+    note = earnings.earnings_note("9999", "jp", today=NOV10)
+    assert note == "⚠ 決算 2026-11-10 (本日) — ギャップでトリガーが飛びうる (次回 2027-02-10)"
+
+
+def test_same_day_unavailable_keeps_gap_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算の当日に取得できなくなっても、「不明」ではなく当日の警告を出す。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, "equity")
+    note = earnings.earnings_note("9999", "jp", today=NOV10)
+    assert note == "⚠ 決算 2026-11-10 (本日) — ギャップでトリガーが飛びうる"

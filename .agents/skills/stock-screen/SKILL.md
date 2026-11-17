@@ -83,7 +83,7 @@ uv run screen.py --market jp --earnings
 
 ### STEP 3. 決算の確認
 
-`--earnings` を付けると候補に決算注記が出る。**日程の報告で終わらせず、トリガーの有効性の問題として扱う** (→ `docs/adr/0009-earnings-date-as-trigger-validity.md`)。注記の 7 パターンと `⚠` の有無による違いは `docs/output-contract.md` を見る。
+`--earnings` を付けると候補に決算注記が出る。**日程の報告で終わらせず、トリガーの有効性の問題として扱う** (→ `docs/adr/0009-earnings-date-as-trigger-validity.md`)。注記の各パターンと `⚠` の有無による違いは `docs/output-contract.md` を見る。
 
 そのうえで判断に落とすときは:
 
