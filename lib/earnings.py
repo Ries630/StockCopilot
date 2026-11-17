@@ -61,7 +61,7 @@ def earnings_note(ticker: str, market: str, today: dt.date | None = None) -> str
     today = today or dt.date.today()
     fetched = fetch_next_earnings(ticker, market)
     seen = _remember(f"{market}:{ticker.upper()}", fetched, today)
-    recent = _recent_past(seen, today)
+    recent = _recent_or_today(seen, today)
     if recent and (fetched is None or abs((fetched - today).days) > EARNINGS_ALERT_DAYS):
         note = _format_note(recent, today)
         if fetched is not None and fetched > today:
@@ -97,17 +97,20 @@ def _format_note(day: dt.date, today: dt.date) -> str:
     return f"⚠ {note} — {tail}"
 
 
-def _recent_past(seen: list[dt.date], today: dt.date) -> dt.date | None:
-    """記録した決算日のうち、警告期間内に過ぎた最新の日を返す。
+def _recent_or_today(seen: list[dt.date], today: dt.date) -> dt.date | None:
+    """記録した決算日のうち、当日か警告期間内に過ぎた最新の日を返す。
+
+    当日を含めるのは、日本株は 15 時に決算が出るため、夕方の実行時点で取得値が
+    もう次回の予定日に切り替わっていることがあるから。当日の決算のギャップ警告を落とさない。
 
     Args:
         seen: 記録した決算日。
         today: 判定日。
 
     Returns:
-        判定日より前で EARNINGS_ALERT_DAYS 以内の最新の決算日。無ければ None。
+        判定日以前で EARNINGS_ALERT_DAYS 以内の最新の決算日。無ければ None。
     """
-    past = [d for d in seen if 0 < (today - d).days <= EARNINGS_ALERT_DAYS]
+    past = [d for d in seen if 0 <= (today - d).days <= EARNINGS_ALERT_DAYS]
     return max(past, default=None)
 
 
@@ -159,7 +162,8 @@ def _remember(key: str, fetched: dt.date | None, today: dt.date) -> list[dt.date
     try:
         EARNINGS_SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
         # 書きかけのファイルを次の読み込みが「壊れた記録」と見なさないよう、置き換えで書く
-        tmp = EARNINGS_SEEN_PATH.with_suffix(".tmp")
+        # 一時ファイル名にプロセス ID を入れ、並行して動く analyze.py / screen.py と衝突させない
+        tmp = EARNINGS_SEEN_PATH.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(
             json.dumps(records, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
             encoding="utf-8",

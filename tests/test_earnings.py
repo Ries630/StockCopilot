@@ -224,3 +224,22 @@ def test_postponed_schedule_is_not_remembered(monkeypatch: pytest.MonkeyPatch) -
     earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 1))
     note = earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 12))
     assert note == "決算 2026-11-25 (あと 13 日)"
+
+
+def test_same_day_rollover_keeps_gap_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算の当日に取得値が次回日へ切り替わっても、当日のギャップ警告を出す。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, FEB10)
+    note = earnings.earnings_note("9999", "jp", today=NOV10)
+    assert note == "⚠ 決算 2026-11-10 (本日) — ギャップでトリガーが飛びうる (次回 2027-02-10)"
+
+
+def test_same_day_unavailable_keeps_gap_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """決算の当日に取得できなくなっても、「不明」ではなく当日の警告を出す。"""
+    _patch_earnings(monkeypatch, NOV10)
+    earnings.earnings_note("9999", "jp", today=dt.date(2026, 11, 9))
+    _patch_earnings(monkeypatch, None)
+    _patch_instrument_type(monkeypatch, "equity")
+    note = earnings.earnings_note("9999", "jp", today=NOV10)
+    assert note == "⚠ 決算 2026-11-10 (本日) — ギャップでトリガーが飛びうる"
