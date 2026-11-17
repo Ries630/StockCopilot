@@ -65,8 +65,26 @@ Investment の同期を提案する。
 実効保有 = Investment の as_of 時点の保有 + as_of 以降の執行記録
 ```
 
-`stock-check` の分析対象も、`screen.py` が母集団から落とす保有も、同じこの定義を使う。
-`as_of` が古くても、執行を記録してあれば買った直後の銘柄が候補に出ることはない。
+`analyze.py` の保有モード（`stock-check` の分析対象）も、`screen.py` が母集団から落とす保有も、
+`lib/holdings.py` の `effective_holdings()` が組んだ同じ結果を使う
+（→ [ADR-0031](adr/0031-effective-holdings-for-analyze.md)）。
+`as_of` が古くても、執行を記録してあれば買った直後の銘柄が候補に出ることはなく、
+売り切った銘柄が保有モードで分析されることもない。
+
+`analyze.py` の保有モードは冒頭に組み立てを出す。
+
+```
+実効保有 N 銘柄 = Investment as_of=YYYY-MM-DD + 執行記録 R 件中 A 件を反映
+  Investment as_of=YYYY-MM-DD (D 日前)
+  執行記録から株数を取った銘柄 M (約定後の残株数)
+  [warn] journal L 行目: 理由
+```
+
+執行記録から株数を取った銘柄の株数は、口座をまたいだ残株数の合計になる（口座の内訳は
+ジャーナルから分からない）。as_of 以降に新規に買った銘柄は Investment に行が無いため、
+口座は「口座不明」と表示する。
+`--holdings-only` を付けると、同じヘッダと銘柄ごとの 1 行だけを出し、指標は計算しない
+（確定足が更新されなかった市場の保有を取るため）。
 
 ## 決算注記（`lib/earnings.py`）
 

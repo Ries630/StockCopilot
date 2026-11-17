@@ -89,6 +89,7 @@ ADR の作成基準・書式・作成・更新・置換・廃止の手順は `ad
 | [0028](0028-standalone-analysis-journal-history.md) | 単体分析はジャーナルに履歴を残す | 承認済み |
 | [0029](0029-market-specific-bar-observation.md) | 確定足の更新状態を市場別に判定し、取得不能市場だけ停止する | 承認済み |
 | [0030](0030-current-holding-state-with-carried-analysis.md) | 現在の保有状態を正にし、市場状態に応じて分析だけを合流する | 承認済み |
+| [0031](0031-effective-holdings-for-analyze.md) | analyze.py の保有モードも実効保有で動かし、株数を決定的に出す | 承認済み |
 
 ### スキル定義の置き場所（2026-08-14）
 

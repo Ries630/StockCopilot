@@ -6,9 +6,10 @@ Investment 側とは module import せず、生成 JSON を読むだけの疎結
 
 投資信託 (class=投資信託) は公開ティッカーが無くテクニカル分析の対象外なので除外する。
 
-スクリーナーの除外リスト (held_tickers) だけは Investment の値そのものではなく、
-ジャーナルの執行記録と合成した**実効保有**を返す
-([ADR-0015](../docs/adr/0015-journal-executions-machine-read.md))。
+公開するのは、ジャーナルの執行記録と合成した**実効保有** (effective_holdings) だけにする。
+スクリーナーの母集団除外も analyze.py の保有モードも、同じこの合成を使う
+([ADR-0015](../docs/adr/0015-journal-executions-machine-read.md) /
+[ADR-0031](../docs/adr/0031-effective-holdings-for-analyze.md))。
 
     実効保有 = Investment の as_of 時点の保有 + as_of 以降の執行記録
 """
@@ -22,6 +23,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from lib.datasource import detect_market
 from lib.journal import Execution, load_executions
 
 INVESTMENT_OUTPUT = Path("~/AgentProjects/Investment/output").expanduser()
@@ -122,17 +124,6 @@ def _has_stock_holdings(path: Path) -> bool:
     return isinstance(stock, dict) and isinstance(stock.get("holdings"), list)
 
 
-def load_holdings() -> list[dict]:
-    """株式保有の一覧を返す (テクニカル分析可能なもののみ)。
-
-    Returns:
-        [{ticker, name, market, quantity, account, class, as_of, as_of_source}, ...]
-        market は region から導出 ("日本"→"jp"、それ以外→"us")。
-        as_of は口座に対応する資産クラスの基準日で、銘柄ごとに異なりうる。
-    """
-    return _load_holdings()[0]
-
-
 def _load_holdings() -> tuple[list[dict], str]:
     """保有の一覧と、既定の基準日 (stock.as_of) を返す。
 
@@ -169,16 +160,25 @@ def _load_holdings() -> tuple[list[dict], str]:
     return out, default_as_of
 
 
-@dataclass(frozen=True)
-class HeldTickers:
-    """実効保有のティッカー集合と、その組み立ての内訳。
+JOURNAL_SOURCE = "journal"
+"""実効保有の行の as_of_source に入れる値。株数がジャーナルの執行記録から来たことを示す。"""
 
-    集合だけでなく内訳を返すのは、**合成が壊れたことに呼び出し側が気付ける**
+
+@dataclass(frozen=True)
+class EffectiveHoldings:
+    """実効保有の一覧と、その組み立ての内訳。
+
+    一覧だけでなく内訳を返すのは、**合成が壊れたことに呼び出し側が気付ける**
     ようにするため。ジャーナルは人が書く Markdown なので、書式ゆれで
-    除外が静かに不完全になるのが最悪の失敗になる。
+    保有が静かに不完全になるのが最悪の失敗になる。
 
     Attributes:
-        tickers: 実効保有のティッカー集合 (除外フィルタに使う)。
+        holdings: 実効保有の行。キーは
+            {ticker, name, market, quantity, account, class, as_of, as_of_source}。
+            執行を反映した銘柄は 1 行にまとめ、quantity は執行後の残株数、
+            as_of は約定日、as_of_source は JOURNAL_SOURCE になる。
+            as_of 以降に新規に買った銘柄は Investment に行が無いので、
+            name・account・class は空文字になる。
         as_of: Investment の既定の基準日。資産クラス別の基準日は銘柄ごとに
             解決しており、これは表示用の代表値でしかない。
         executions_read: ジャーナルから読めた執行の件数。
@@ -186,47 +186,85 @@ class HeldTickers:
         warnings: 解釈できなかった行の警告 ("N 行目: 理由")。
     """
 
-    tickers: set[str]
+    holdings: list[dict]
     as_of: str
     executions_read: int
     executions_applied: int
     warnings: list[str]
 
+    @property
+    def tickers(self) -> set[str]:
+        """実効保有のティッカー集合 (スクリーナーの除外フィルタに使う)。"""
+        return {h["ticker"] for h in self.holdings}
 
-def held_tickers() -> HeldTickers:
-    """実効保有のティッカー集合を返す (スクリーナーの除外リスト用)。
+
+def effective_holdings() -> EffectiveHoldings:
+    """実効保有を返す (テクニカル分析可能な資産クラスのみ)。
 
         実効保有 = Investment の as_of 時点の保有 + as_of 以降の執行記録
 
     ジャーナルが無ければ Investment の保有そのものになる (執行 0 件)。
+    残株数は銘柄単位の合計なので、執行を反映した銘柄は口座をまたいで 1 行にまとめる
+    (口座ごとの内訳はジャーナルからは分からない)。
 
     Returns:
-        HeldTickers。合成の内訳を含む。
+        EffectiveHoldings。合成の内訳を含む。
 
     Raises:
         FileNotFoundError: Investment の report_data が 1 件も無い場合。
     """
     rows, default_as_of = _load_holdings()
     executions, warnings = load_executions()
-    tickers = {h["ticker"] for h in rows}
     as_of_by_ticker = {h["ticker"].upper(): h["as_of"] for h in rows}
-    original_by_upper = {h["ticker"].upper(): h["ticker"] for h in rows}
-
     applied = _latest_executions(executions, as_of_by_ticker, default_as_of)
-    for key, execution in applied.items():
-        ticker = original_by_upper.get(key, key)
-        if execution.remaining > 0:
-            tickers.add(ticker)
-        else:
-            tickers.discard(ticker)
 
-    return HeldTickers(
-        tickers=tickers,
+    out = [h for h in rows if h["ticker"].upper() not in applied]
+    for key, execution in applied.items():
+        if execution.remaining <= 0:
+            continue
+        snapshot = [h for h in rows if h["ticker"].upper() == key]
+        out.append(_journal_row(key, execution, snapshot))
+
+    return EffectiveHoldings(
+        holdings=out,
         as_of=default_as_of,
         executions_read=len(executions),
         executions_applied=len(applied),
         warnings=warnings,
     )
+
+
+def _journal_row(key: str, execution: Execution, snapshot: list[dict]) -> dict:
+    """執行を反映した銘柄の 1 行を組み立てる。
+
+    銘柄名・市場・口座・資産クラスは Investment の行から引き継ぐ。
+    Investment に行が無い (as_of 以降に新規に買った) 銘柄では、市場は
+    ティッカーから推定し、それ以外は空文字にする。推測で埋めると、
+    分からないことが表示から消える。
+
+    Args:
+        key: 大文字ティッカー。
+        execution: 反映する執行 (残株数 > 0)。
+        snapshot: Investment の同じ銘柄の行 (口座ごと。0 件もありうる)。
+
+    Returns:
+        effective_holdings() の行と同じ形の dict。
+    """
+    first = snapshot[0] if snapshot else {}
+    accounts = list(dict.fromkeys(h["account"] for h in snapshot if h.get("account")))
+    # 残株数は小数株のために float で読むので、整数なら整数に戻す (表示の "200.0株" を防ぐ)
+    remaining = execution.remaining
+    quantity = int(remaining) if remaining.is_integer() else remaining
+    return {
+        "ticker": first.get("ticker", key),
+        "name": first.get("name", ""),
+        "market": first.get("market") or detect_market(key),
+        "quantity": quantity,
+        "account": "・".join(accounts),
+        "class": first.get("class", ""),
+        "as_of": execution.date.isoformat(),
+        "as_of_source": JOURNAL_SOURCE,
+    }
 
 
 def _latest_executions(

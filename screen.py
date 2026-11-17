@@ -19,7 +19,7 @@
 母集団はウォッチリスト (config/watchlist.py) + 探索ユニバース (config/universe.py)。
 保有銘柄は既定で除外する (--include-held で含められる)。除外に使うのは
 Investment の as_of 時点の保有ではなく、ジャーナルの執行記録と合成した実効保有
-(lib/holdings.py の held_tickers)。
+(lib/holdings.py の effective_holdings)。
 
 使い方:
     uv run screen.py                     # JP + US 全ユニバース
@@ -48,7 +48,7 @@ from config.universe import (
 )
 from lib.datasource import fetch_ohlcv
 from lib.earnings import earnings_note
-from lib.holdings import HeldTickers, held_tickers
+from lib.holdings import EffectiveHoldings, effective_holdings
 from lib.indicators import daily_stats
 from lib.journal import JOURNAL_PATH
 from lib.market_observation import (
@@ -80,7 +80,7 @@ class ScreenOutcome:
 
 def build_universe(
     market: str, include_held: bool
-) -> tuple[list[tuple[str, str]], HeldTickers | None]:
+) -> tuple[list[tuple[str, str]], EffectiveHoldings | None]:
     """(ticker, market) のリストを返す。保有銘柄は既定で除外する。
 
     ウォッチリスト (保有検討中) を探索ユニバースより先に置く。取得順が
@@ -114,7 +114,7 @@ def build_universe(
     if include_held:
         return universe, None
     try:
-        held = held_tickers()
+        held = effective_holdings()
     except FileNotFoundError:
         # 保有データが無い環境 (Investment 未生成) では除外せず続行する。
         # 除外できなかったことは呼び出し側が None から判別する
@@ -256,7 +256,7 @@ def attach_names(candidates: list[dict]) -> None:
             c["name"] = None
 
 
-def held_summary(held: HeldTickers | None, include_held: bool) -> str:
+def held_summary(held: EffectiveHoldings | None, include_held: bool) -> str:
     """保有除外の内訳を表示用の文字列にする。
 
     除外に使った基準日と執行記録の件数を必ず出す。母集団から何が落ちたかが

@@ -77,15 +77,18 @@ JP/US両市場を扱うため `--market` で限定せず、`--json --earnings` �
 STEP 0 の `journal/lessons.md` の読み込みから STEP 4 の出力フォーマットまでを行い、
 **記録 (あちらの STEP 5) はここでは行わない** — STEP 7 でまとめて扱う。
 
-保有の読み込みと実効保有の組み立ては通常どおり行うが、`analyze.py`は更新市場だけに限定する。
+指標の計算は更新市場だけに限定する。実効保有はどの市場でも `analyze.py` の出力から取り、
+LLM がジャーナルから株数を組み直さない。
 
 ```bash
-uv run analyze.py --market jp  # JPがupdated / initialのときだけ
-uv run analyze.py --market us  # USがupdated / initialのときだけ
+uv run analyze.py --market jp  # JPがupdated / initialのとき
+uv run analyze.py --market us  # USがupdated / initialのとき
+uv run analyze.py --market jp --holdings-only  # JPがunchanged / unavailableのとき
+uv run analyze.py --market us --holdings-only  # USがunchanged / unavailableのとき
 ```
 
-`unchanged` / `unavailable`市場では`analyze.py`を呼ばない。両市場とも該当する場合は保有の
-分析呼び出しをすべて飛ばし、STEP 4で前回結果を引き継ぐ。
+`--holdings-only` は実効保有だけを出し、指標を計算しない。非更新市場の分析はSTEP 4で
+前回結果から引き継ぐ。
 
 シリーズ分析の起点は `stock-check` の「前回の中間表現と執行記録の読み込み」に従う。
 
@@ -106,7 +109,7 @@ STEP 1・2 の更新市場の結果を `reports/YYYY-MM-DD_evening.draft.json` �
 - **`prose` を必ず埋める。** HTML 単独でレポートとして成立させるための本文で、
   図だけ並べても読み手は判断を再構成できない。`prose` を欠くと `report.py` が落ちる
 - **日本株には `name` を必ず入れる。** 4 桁コードだけでは何の会社か分からない。
-  保有は Investment の生成物、候補は `screen.py` が付けて返すので、その値を写す。
+  保有は `analyze.py` の銘柄見出し、候補は `screen.py` が付けて返すので、その値を写す。
   欠けていると `report.py` が落ちる → [ADR-0023](../../../docs/adr/0023-japanese-stock-display-names.md)
 - **用語の説明を `prose` に書かない。** 説明は `report.py` の `GLOSSARY` にあり、
   HTML ではポップオーバーとして出る。`prose` に書くのはその日の観測と判断だけ

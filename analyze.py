@@ -5,7 +5,7 @@
 """保有/指定銘柄のテクニカル分析 (CryptoTradingCopilot swing/_analyze.py の株式版)。
 
 対象銘柄はコマンドライン引数で渡す (例: uv run analyze.py 7203 AAPL)。
-省略時は Investment の保有銘柄すべて。
+省略時は実効保有 (Investment の保有 + ジャーナルの執行記録) の全銘柄。
 
 時間足は日足 + 週足 (crypto の 1h/4h/1d に対して、株式のスイングでは
 週足が上位トレンド、日足が執行判断に対応する)。
@@ -22,7 +22,7 @@ import json
 from config.universe import NAMES_JP
 from lib.datasource import detect_market, fetch_ohlcv
 from lib.earnings import earnings_note
-from lib.holdings import load_holdings
+from lib.holdings import JOURNAL_SOURCE, EffectiveHoldings, effective_holdings
 from lib.indicators import compute
 from lib.names import display_name
 
@@ -37,12 +37,6 @@ from lib.names import display_name
 # 短い閾値では常時点灯し、警告として機能しなくなるため四半期を目安にする。
 STALE_DAYS = 90
 
-# 経過日数の下に必ず出す 1 行。as_of の古さを異常として扱わせない代わりに、
-# 何と突合すべきかを毎回明示する
-LEDGER_NOTE = (
-    "as_of 以降の売買はジャーナルの執行記録と突合すること "
-    "(実効保有 = as_of 時点 + 執行記録)"
-)
 
 
 def analyze_symbol(ticker: str, market: str, extra: str = "") -> None:
@@ -91,42 +85,82 @@ def freshness(as_of: str) -> str:
     return f"{label} ({days} 日前)"
 
 
-def print_holdings_header(holdings: list[dict]) -> None:
-    """保有データの鮮度 (as_of と経過日数) を表示する。
+def print_holdings_header(holdings: list[dict], effective: EffectiveHoldings) -> None:
+    """実効保有の組み立てと、保有データの鮮度 (as_of と経過日数) を表示する。
 
-    鮮度を毎回目に見える形で出すのは、古い保有データを最新と誤認したまま
-    増減を語るのを防ぐため。判定できない場合もその旨を出し、黙って進めない。
+    組み立てを毎回目に見える形で出すのは、株数がどこから来たかを読み手が
+    最初に確認できるようにするため。鮮度を出すのは、古い保有データを最新と
+    誤認したまま増減を語るのを防ぐため。判定できない場合もその旨を出し、黙って進めない。
 
     **基準日は資産クラスごとに異なりうる** (証券口座と自動運用口座で数週間ずれる)。
     1 つに丸めると古いほうが新しく見えるため、異なる場合は分けて出す。
+    執行記録から株数を取った銘柄は Investment の鮮度と無関係なので、別に数える。
 
     Args:
-        holdings: load_holdings() の戻り値 (1 件以上)。
+        holdings: 表示する実効保有の行 (市場で絞り込んだ後。1 件以上)。
+        effective: effective_holdings() の戻り値 (組み立ての内訳を持つ)。
     """
+    snapshot = [h for h in holdings if h.get("as_of_source") != JOURNAL_SOURCE]
+    from_journal = len(holdings) - len(snapshot)
     groups: dict[str, list[dict]] = {}
-    for h in holdings:
+    for h in snapshot:
         groups.setdefault(h.get("as_of") or "", []).append(h)
 
-    head = f"保有 {len(holdings)} 銘柄 / Investment"
-    if len(groups) == 1:
-        print(f"{head} {freshness(next(iter(groups)))}")
+    if effective.executions_read:
+        ledger = (
+            f"執行記録 {effective.executions_read} 件中 "
+            f"{effective.executions_applied} 件を反映"
+        )
     else:
-        print(f"{head} as_of は資産クラスで異なる")
+        ledger = "執行記録なし (as_of 時点のまま)"
+    print(
+        f"実効保有 {len(holdings)} 銘柄 = "
+        f"Investment as_of={effective.as_of or '不明'} + {ledger}"
+    )
+    if len(groups) == 1:
+        print(f"  Investment {freshness(next(iter(groups)))}")
+    elif groups:
+        print("  Investment as_of は資産クラスで異なる")
         for as_of, members in sorted(groups.items()):
             sources = sorted({m.get("as_of_source") or "?" for m in members})
-            print(f"  {freshness(as_of)} — {len(members)} 銘柄 ({', '.join(sources)})")
-    print(f"  {LEDGER_NOTE}\n")
+            print(f"    {freshness(as_of)} — {len(members)} 銘柄 ({', '.join(sources)})")
+    if from_journal:
+        print(f"  執行記録から株数を取った銘柄 {from_journal} (約定後の残株数)")
+    for warning in effective.warnings:
+        print(f"  [warn] journal {warning}")
+    print()
+
+
+def holding_label(holding: dict) -> str:
+    """保有 1 行の表示用の補足 (銘柄名・口座・株数) を返す。
+
+    as_of 以降に新規に買った銘柄は Investment に行が無く、銘柄名と口座が空になる。
+    銘柄名は辞書と yfinance から引き、口座は分からないことをそのまま出す。
+
+    Args:
+        holding: effective_holdings() の行。
+
+    Returns:
+        表示用の文字列 (例: "テスト銘柄 (楽天 NISA 100株)")。
+    """
+    name = holding["name"] or display_name(holding["ticker"], holding["market"], NAMES_JP) or ""
+    account = holding["account"] or "口座不明"
+    return f"{name} ({account} {holding['quantity']}株)".lstrip()
 
 
 def main() -> None:
     """引数の銘柄 (省略時は保有全銘柄) を順に分析する。"""
     parser = argparse.ArgumentParser(description="保有/指定銘柄のテクニカル分析")
     parser.add_argument("--market", default="all", choices=["jp", "us", "all"])
+    parser.add_argument(
+        "--holdings-only",
+        action="store_true",
+        help="実効保有だけを出し、指標は計算しない (確定足が更新されなかった市場の保有用)",
+    )
     parser.add_argument("tickers", nargs="*")
     args = parser.parse_args()
     if args.tickers:
         # 4 桁コードだけでは何の会社か分からないので、日本株には名前を付ける
-        # (保有モードは Investment の生成物が日本語名を持っている)
         targets = []
         for t in args.tickers:
             market = detect_market(t)
@@ -134,10 +168,10 @@ def main() -> None:
                 continue
             targets.append((t, market, display_name(t, market, NAMES_JP) or ""))
     else:
-        holdings = load_holdings()
+        effective = effective_holdings()
         holdings = [
             holding
-            for holding in holdings
+            for holding in effective.holdings
             if args.market == "all" or holding["market"] == args.market
         ]
         if not holdings:
@@ -146,11 +180,12 @@ def main() -> None:
                 "ティッカーを引数で指定すること。"
             )
             return
-        print_holdings_header(holdings)
-        targets = [
-            (h["ticker"], h["market"], f"{h['name']} ({h['account']} {h['quantity']}株)")
-            for h in holdings
-        ]
+        print_holdings_header(holdings, effective)
+        if args.holdings_only:
+            for h in holdings:
+                print(f"{h['ticker']} {h['market']} {holding_label(h)}")
+            return
+        targets = [(h["ticker"], h["market"], holding_label(h)) for h in holdings]
 
     for ticker, market, extra in targets:
         try:

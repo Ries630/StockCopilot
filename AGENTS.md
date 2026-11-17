@@ -51,8 +51,10 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
 - `lib/earnings.py` — 決算注記。analyze.py と screen.py が共用 (警告期間と文言の正)
   → [ADR-0012](docs/adr/0012-shared-earnings-module.md)
 - `lib/holdings.py` — Investment プロジェクトの生成物から株式保有を読む (**read-only**)。
-  `held_tickers()` はジャーナルの執行記録と合成した**実効保有**を返す
-  → [ADR-0015](docs/adr/0015-journal-executions-machine-read.md)
+  `effective_holdings()` はジャーナルの執行記録と合成した**実効保有**を返し、
+  screen.py の除外と analyze.py の保有モードが共用する
+  → [ADR-0015](docs/adr/0015-journal-executions-machine-read.md) /
+  [ADR-0031](docs/adr/0031-effective-holdings-for-analyze.md)
 - `lib/journal.py` — ジャーナルの `### 執行` を読むパーサ (約定日 / 銘柄 / 残株数の 3 項目のみ)。
   書式の正は `journal/README.md`
 - `lib/market_observation.py` — 前回と今回の確定足を市場別に比較し、更新市場だけを分析して
@@ -132,7 +134,7 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   (`.gitignore` 済み・CI で検査)。ウォッチリストは保有ではないが**購入意図そのもの**なので
   同じ扱いにする。雛形 `config/watchlist.example.py` だけを追跡する
 - `config/universe.py` に**実際の保有銘柄を書き足さない**。保有は screen.py が
-  `held_tickers()` を除外フィルタとして使い既定で母集団から落とすので、書いても意味がない
+  `effective_holdings()` を除外フィルタとして使い既定で母集団から落とすので、書いても意味がない
 - Issue・PR・コミットメッセージに保有銘柄や株数を書かない。銘柄に触れる必要がある場合は
   「保有銘柄A」等に置き換える
 - 分析結果の貼り付け (screen.py / analyze.py の出力) も同様に扱う

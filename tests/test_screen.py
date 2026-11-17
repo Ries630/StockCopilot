@@ -17,20 +17,20 @@ import pandas as pd
 import pytest
 
 import screen
-from lib.holdings import HeldTickers
+from lib.holdings import EffectiveHoldings
 
 
-def _held(tickers: set[str] | None = None, **overrides) -> HeldTickers:
-    """held_tickers() の戻り値を組み立てる (実保有・実ジャーナルに依存させない)。"""
+def _held(tickers: set[str] | None = None, **overrides) -> EffectiveHoldings:
+    """effective_holdings() の戻り値を組み立てる (実保有・実ジャーナルに依存させない)。"""
     fields = {
-        "tickers": set(tickers or ()),
+        "holdings": [{"ticker": t} for t in sorted(tickers or ())],
         "as_of": "2026-07-22",
         "executions_read": 0,
         "executions_applied": 0,
         "warnings": [],
     }
     fields.update(overrides)
-    return HeldTickers(**fields)
+    return EffectiveHoldings(**fields)
 
 
 def _patch_lists(
@@ -47,7 +47,7 @@ def _patch_lists(
     monkeypatch.setattr(screen, "WATCHLIST_US", watch_us or [])
     monkeypatch.setattr(screen, "UNIVERSE_JP", uni_jp or [])
     monkeypatch.setattr(screen, "UNIVERSE_US", uni_us or [])
-    monkeypatch.setattr(screen, "held_tickers", lambda: _held(held))
+    monkeypatch.setattr(screen, "effective_holdings", lambda: _held(held))
 
 
 def test_watchlist_is_included(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,7 +93,7 @@ def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> Non
     def _raise() -> set[str]:
         raise FileNotFoundError("report_data_*.json が見つからない")
 
-    monkeypatch.setattr(screen, "held_tickers", _raise)
+    monkeypatch.setattr(screen, "effective_holdings", _raise)
     universe, held = screen.build_universe("jp", False)
     assert universe == [("1111", "jp")]
     assert held is None

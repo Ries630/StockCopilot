@@ -13,7 +13,7 @@ crypto (swing/screen.py) は Hyperliquid の 1 リクエストで全銘柄の出
 3. **保有** — 既定で除外
 
 保有銘柄はスクリーニングの対象ではない。screen.py が lib/holdings.py の
-held_tickers() を除外フィルタとして使い、既定で母集団から落とす
+effective_holdings() を除外フィルタとして使い、既定で母集団から落とす
 (--include-held で含められる)。既に持っている銘柄が候補に出ても行動が変わらず、
 保有側の判断は analyze.py / stock-check が担うため。
 """
