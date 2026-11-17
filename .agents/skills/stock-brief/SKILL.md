@@ -9,6 +9,8 @@ description: 株式現物の夕方ブリーフ。候補スクリーニング (st
 平日夕方の定期タスク `stock-copilot-evening-brief` の実体。個別に呼ぶ場合は
 「夕方ブリーフ」「イブニングブリーフ」で起動する。
 
+「試運転」「dry-run」と頼まれたときは、下の「試運転」の節の差分を当てて通しで回す。
+
 **保有分析だけ / 候補探しだけを頼まれたときはこのスキルを使わない。**
 `stock-check` / `stock-screen` を単独で使う。こちらは両方を通しで回し、
 レポートと通知まで出すための束ね役である。
@@ -92,6 +94,11 @@ uv run analyze.py --market us --holdings-only  # USがunchanged / unavailableの
 
 シリーズ分析の起点は `stock-check` の「前回の中間表現と執行記録の読み込み」に従う。
 
+**前回の実行が抜けていないかを確かめる。** `reports/latest.json` の `date` と今日の間に、
+実行されるはずだった平日がある (Mac に届かなかった、使用量の上限で止まった等) ときは、
+間の回が未実行だったとしてSTEP 8に1行書く。確定足の比較は市場ごとに `finalize_report.py` が
+行うので、抜けた日の分を手で補わない。
+
 ## STEP 3. 中間表現 JSON
 
 ```bash
@@ -109,7 +116,8 @@ STEP 1・2 の更新市場の結果を `reports/YYYY-MM-DD_evening.draft.json` �
 - **`prose` を必ず埋める。** HTML 単独でレポートとして成立させるための本文で、
   図だけ並べても読み手は判断を再構成できない。`prose` を欠くと `report.py` が落ちる
 - **日本株には `name` を必ず入れる。** 4 桁コードだけでは何の会社か分からない。
-  保有は `analyze.py` の銘柄見出し、候補は `screen.py` が付けて返すので、その値を写す。
+  保有は `analyze.py` の銘柄見出し (`--holdings-only` では各行)、候補は `screen.py` が
+  付けて返すので、その値を写す。
   欠けていると `report.py` が落ちる → [ADR-0023](../../../docs/adr/0023-japanese-stock-display-names.md)
 - **用語の説明を `prose` に書かない。** 説明は `report.py` の `GLOSSARY` にあり、
   HTML ではポップオーバーとして出る。`prose` に書くのはその日の観測と判断だけ
@@ -206,6 +214,7 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 📮 Slack: sent (メンションあり)
 ```
 
+前回の実行が抜けていたら (STEP 2)、`⚠ 前回の実行: MM/DD (MM/DD の回は未実行)` を足す。
 ジャーナルに書いたものがあれば最後に 1 行足す (`📝 ジャーナル: 執行 1 件を記録`)。
 **何も書かなかった日は何も足さない。**
 
@@ -218,6 +227,22 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 `journal/lessons.md` に書き足す。**この SKILL.md には書かない** — 教訓は実際の保有に
 ついての観測を含み、このファイルは公開リポジトリで追跡されている
 (→ [`docs/adr/0018-bundle-skills-in-repo.md`](../../../docs/adr/0018-bundle-skills-in-repo.md))。
+
+## 試運転
+
+スケジュールの移行や手順の変更を確かめるために通しで回すときは、次の差分だけを当てる。
+ほかの STEP はそのまま実行する。ファイル名の `_evening` を `_trial` に替えるのは、同じ日の
+本番の JSON と HTML (Slack がリンクする判断の記録) を上書きしないため。
+
+| STEP | 試運転での扱い | 理由 |
+|---|---|---|
+| 3 | `reports/YYYY-MM-DD_trial.draft.json` に書く | 本番の下書きと分ける |
+| 4 | `uv run finalize_report.py reports/YYYY-MM-DD_trial.draft.json -o reports/YYYY-MM-DD_trial.json` | 前回結果は本番と同じ `reports/latest.json` から読む |
+| 5 | `uv run report.py reports/YYYY-MM-DD_trial.json --no-latest` | `reports/latest.json` は次回の比較の起点なので、試運転で動かさない |
+| 6 | `uv run notify.py reports/YYYY-MM-DD_trial.json --dry-run` | Slack に送らず、送る本文だけを確かめる |
+| 7・9 | 書かない | ジャーナルと lessons は本番の記録だけにする |
+
+STEP 8 の冒頭に `🧪 試運転` と書き、Slack の行は `📮 Slack: dry-run` にする。
 
 ## 注意
 

@@ -159,6 +159,8 @@ def main() -> None:
     )
     parser.add_argument("tickers", nargs="*")
     args = parser.parse_args()
+    if args.holdings_only and args.tickers:
+        parser.error("--holdings-only は保有モード専用で、ティッカーと同時に指定できない")
     if args.tickers:
         # 4 桁コードだけでは何の会社か分からないので、日本株には名前を付ける
         targets = []
@@ -175,10 +177,8 @@ def main() -> None:
             if args.market == "all" or holding["market"] == args.market
         ]
         if not holdings:
-            print(
-                f"対象市場 ({args.market}) の保有銘柄が見つからない。"
-                "ティッカーを引数で指定すること。"
-            )
+            hint = "" if args.holdings_only else "ティッカーを引数で指定すること。"
+            print(f"対象市場 ({args.market}) の保有銘柄が見つからない。{hint}")
             return
         print_holdings_header(holdings, effective)
         if args.holdings_only:
