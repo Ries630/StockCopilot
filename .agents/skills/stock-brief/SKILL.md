@@ -97,7 +97,7 @@ uv run analyze.py --market us --holdings-only  # USがunchanged / unavailableの
 **前回の実行が抜けていないかを確かめる。** `reports/latest.json` の `date` と今日の間に、
 実行されるはずだった平日がある (Mac に届かなかった、使用量の上限で止まった等) ときは、
 間の回が未実行だったとしてSTEP 8に1行書く。確定足の比較は市場ごとに `finalize_report.py` が
-行うので、抜けた日の分を手で補わない。祝日で休場だった可能性があれば、そう書き添える。
+行うので、抜けた日の分を手で補わない。
 
 ## STEP 3. 中間表現 JSON
 
@@ -231,12 +231,15 @@ uv run notify.py reports/YYYY-MM-DD_evening.json
 ## 試運転
 
 スケジュールの移行や手順の変更を確かめるために通しで回すときは、次の差分だけを当てる。
-ほかの STEP はそのまま実行する。
+ほかの STEP はそのまま実行する。ファイル名の `_evening` を `_trial` に替えるのは、同じ日の
+本番の JSON と HTML (Slack がリンクする判断の記録) を上書きしないため。
 
 | STEP | 試運転での扱い | 理由 |
 |---|---|---|
-| 5 | `uv run report.py reports/YYYY-MM-DD_evening.json --no-latest` | `reports/latest.json` は次回の比較の起点なので、試運転で動かさない |
-| 6 | `uv run notify.py reports/YYYY-MM-DD_evening.json --dry-run` | Slack に送らず、送る本文だけを確かめる |
+| 3 | `reports/YYYY-MM-DD_trial.draft.json` に書く | 本番の下書きと分ける |
+| 4 | `uv run finalize_report.py reports/YYYY-MM-DD_trial.draft.json -o reports/YYYY-MM-DD_trial.json` | 前回結果は本番と同じ `reports/latest.json` から読む |
+| 5 | `uv run report.py reports/YYYY-MM-DD_trial.json --no-latest` | `reports/latest.json` は次回の比較の起点なので、試運転で動かさない |
+| 6 | `uv run notify.py reports/YYYY-MM-DD_trial.json --dry-run` | Slack に送らず、送る本文だけを確かめる |
 | 7・9 | 書かない | ジャーナルと lessons は本番の記録だけにする |
 
 STEP 8 の冒頭に `🧪 試運転` と書き、Slack の行は `📮 Slack: dry-run` にする。
