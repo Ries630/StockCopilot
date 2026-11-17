@@ -221,3 +221,26 @@ def test_holdings_header_without_executions(capsys: pytest.CaptureFixture[str]) 
     as_of = (dt.date.today() - dt.timedelta(days=2)).isoformat()
     _header([{"as_of": as_of}])
     assert "執行記録なし (as_of 時点のまま)" in capsys.readouterr().out
+
+
+def test_holdings_only_lists_without_analysis(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--holdings-only は実効保有だけを出し、指標を計算しない (確定足が更新されない市場用)。"""
+    rows = [
+        {
+            "ticker": "1111",
+            "market": "jp",
+            "name": "国内銘柄",
+            "account": "口座A",
+            "quantity": 10,
+            "as_of": "2026-08-20",
+        },
+    ]
+    monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(rows))
+    monkeypatch.setattr(analyze, "analyze_symbol", lambda *_: pytest.fail("指標を計算した"))
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "jp", "--holdings-only"])
+
+    analyze.main()
+
+    assert "1111 jp 国内銘柄 (口座A 10株)" in capsys.readouterr().out

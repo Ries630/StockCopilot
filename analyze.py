@@ -145,13 +145,18 @@ def holding_label(holding: dict) -> str:
     """
     name = holding["name"] or display_name(holding["ticker"], holding["market"], NAMES_JP) or ""
     account = holding["account"] or "口座不明"
-    return f"{name} ({account} {holding['quantity']}株)"
+    return f"{name} ({account} {holding['quantity']}株)".lstrip()
 
 
 def main() -> None:
     """引数の銘柄 (省略時は保有全銘柄) を順に分析する。"""
     parser = argparse.ArgumentParser(description="保有/指定銘柄のテクニカル分析")
     parser.add_argument("--market", default="all", choices=["jp", "us", "all"])
+    parser.add_argument(
+        "--holdings-only",
+        action="store_true",
+        help="実効保有だけを出し、指標は計算しない (確定足が更新されなかった市場の保有用)",
+    )
     parser.add_argument("tickers", nargs="*")
     args = parser.parse_args()
     if args.tickers:
@@ -176,6 +181,10 @@ def main() -> None:
             )
             return
         print_holdings_header(holdings, effective)
+        if args.holdings_only:
+            for h in holdings:
+                print(f"{h['ticker']} {h['market']} {holding_label(h)}")
+            return
         targets = [(h["ticker"], h["market"], holding_label(h)) for h in holdings]
 
     for ticker, market, extra in targets:
