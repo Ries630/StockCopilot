@@ -244,3 +244,10 @@ def test_holdings_only_lists_without_analysis(
     analyze.main()
 
     assert "1111 jp 国内銘柄 (口座A 10株)" in capsys.readouterr().out
+
+
+def test_holdings_only_rejects_tickers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--holdings-only とティッカーの同時指定は、黙って片方を無視せずに拒む。"""
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--holdings-only", "1111"])
+    with pytest.raises(SystemExit):
+        analyze.main()
