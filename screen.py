@@ -17,6 +17,8 @@
 わずかに超えただけの銘柄が通り、避けたはずの「端にいる」状態を拾うことになる。
 
 母集団はウォッチリスト (config/watchlist.py) + 探索ユニバース (config/universe.py)。
+流動性フロアは探索ユニバースだけにかける。ウォッチリストは板の薄さを承知で入れる層なので、
+フロアで落とすと永久に候補に出なくなる (docs/adr/0034-no-liquidity-floor-for-watchlist.md)。
 保有銘柄は既定で除外する (--include-held で含められる)。除外に使うのは
 Investment の as_of 時点の保有ではなく、ジャーナルの執行記録と合成した実効保有
 (lib/holdings.py の effective_holdings)。
@@ -31,8 +33,11 @@ Investment の as_of 時点の保有ではなく、ジャーナルの執行記�
 
 import argparse
 import json
+from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+from typing import Literal, NamedTuple
 
 from config.universe import (
     MAX_CANDIDATES,
@@ -63,52 +68,86 @@ LATEST_REPORT_PATH = Path(__file__).resolve().parent / "reports" / "latest.json"
 """前回の夕方ブリーフ。市場別の確定足比較に使う。"""
 
 
+Layer = Literal["watch", "explore"]
+"""母集団の層。watch はウォッチリスト、explore は探索ユニバース (ADR-0010)。"""
+
+
+class Member(NamedTuple):
+    """母集団の 1 銘柄。
+
+    Attributes:
+        ticker: 生ティッカー。
+        market: ``jp`` または ``us``。
+        layer: どの層から入ったか。流動性フロアの適用と非通過内訳の表示を決める。
+    """
+
+    ticker: str
+    market: str
+    layer: Layer
+
+
+class Rejection(Enum):
+    """候補にならなかった理由。値は表示用の文言。"""
+
+    BELOW_FLOOR = "流動性フロア未満"
+    NO_EVENT = "事象なし"
+    INSUFFICIENT = "データ不足"
+
+
 @dataclass(frozen=True)
 class ScreenOutcome:
-    """1銘柄の取得・評価結果。
+    """1銘柄の取得・評価結果。候補か非通過の理由のどちらか一方を持つ。
 
     Attributes:
         candidate: 条件を通過した候補。非通過ならNone。
         bar_date: 取得できた最新確定足日。取得不能ならNone。
-        evaluated: 指標と流動性を評価できたか。
+        rejection: 非通過の理由。通過したならNone。
     """
 
     candidate: dict | None
     bar_date: str | None
-    evaluated: bool
+    rejection: Rejection | None
+
+    @property
+    def evaluated(self) -> bool:
+        """指標を計算できたか (データ不足でなかったか)。"""
+        return self.rejection is not Rejection.INSUFFICIENT
 
 
 def build_universe(
     market: str, include_held: bool
-) -> tuple[list[tuple[str, str]], EffectiveHoldings | None]:
-    """(ticker, market) のリストを返す。保有銘柄は既定で除外する。
+) -> tuple[list[Member], EffectiveHoldings | None]:
+    """層付きの母集団を返す。保有銘柄は既定で除外する。
 
     ウォッチリスト (保有検討中) を探索ユニバースより先に置く。取得順が
     そのまま失敗時の到達順になるため、優先度の高い層から取りに行く。
+    両方に載る銘柄はウォッチリスト層として扱う (流動性フロアをかけない側)。
 
     Args:
         market: "jp" / "us" / "all"。
         include_held: True なら保有銘柄を除外しない。
 
     Returns:
-        ([(ticker, market), ...], 実効保有)。ティッカーの重複は除去済み。
+        ([Member, ...], 実効保有)。ティッカーの重複は除去済み。
         実効保有は除外しなかった場合と保有データを読めなかった場合に None。
         表示は呼び出し側に任せる (この関数は入出力を持たない)。
     """
-    universe: list[tuple[str, str]] = []
+    universe: list[Member] = []
     if market in ("jp", "all"):
-        universe += [(t, "jp") for t in [*WATCHLIST_JP, *UNIVERSE_JP]]
+        universe += [Member(t, "jp", "watch") for t in WATCHLIST_JP]
+        universe += [Member(t, "jp", "explore") for t in UNIVERSE_JP]
     if market in ("us", "all"):
-        universe += [(t, "us") for t in [*WATCHLIST_US, *UNIVERSE_US]]
+        universe += [Member(t, "us", "watch") for t in WATCHLIST_US]
+        universe += [Member(t, "us", "explore") for t in UNIVERSE_US]
 
     # ウォッチリストと探索ユニバースは重複しうる。yfinance は 1 銘柄 1 リクエストなので、
     # 重複を残すと同じ銘柄を二度取りに行くことになる
-    deduped: list[tuple[str, str]] = []
+    deduped: list[Member] = []
     seen: set[str] = set()
-    for ticker, mkt in universe:
-        if ticker not in seen:
-            seen.add(ticker)
-            deduped.append((ticker, mkt))
+    for member in universe:
+        if member.ticker not in seen:
+            seen.add(member.ticker)
+            deduped.append(member)
     universe = deduped
 
     if include_held:
@@ -119,7 +158,7 @@ def build_universe(
         # 保有データが無い環境 (Investment 未生成) では除外せず続行する。
         # 除外できなかったことは呼び出し側が None から判別する
         return universe, None
-    universe = [(t, m) for t, m in universe if t not in held.tickers]
+    universe = [member for member in universe if member.ticker not in held.tickers]
     return universe, held
 
 
@@ -127,6 +166,7 @@ def screen_one(
     ticker: str,
     market: str,
     bar_dates: dict[str, str] | None = None,
+    apply_floor: bool = True,
 ) -> dict | None:
     """1 銘柄を機械条件にかける。通過しなければ None。
 
@@ -134,36 +174,38 @@ def screen_one(
         ticker: 生ティッカー。
         market: "jp" または "us"。
         bar_dates: 市場ごとの最新確定足日を収集する辞書。省略時は収集しない。
+        apply_floor: 流動性フロアをかけるか。ウォッチリスト層では False。
 
     Returns:
         候補 dict (score / reasons 付き) または None。
     """
-    outcome = evaluate_one(ticker, market)
+    outcome = evaluate_one(ticker, market, apply_floor)
     if bar_dates is not None and outcome.bar_date is not None:
         bar_dates[market] = max(bar_dates.get(market, outcome.bar_date), outcome.bar_date)
     return outcome.candidate
 
 
-def evaluate_one(ticker: str, market: str) -> ScreenOutcome:
-    """1銘柄を取得し、評価可否と候補を分けて返す。
+def evaluate_one(ticker: str, market: str, apply_floor: bool = True) -> ScreenOutcome:
+    """1銘柄を取得し、候補か非通過の理由を返す。
 
     Args:
         ticker: 生ティッカー。
         market: ``jp`` または ``us``。
+        apply_floor: 流動性フロアをかけるか。ウォッチリスト層では False。
 
     Returns:
-        確定足日、評価可否、候補を持つ結果。
+        確定足日と、候補または非通過の理由を持つ結果。
     """
     df = fetch_ohlcv(ticker, market=market, interval="1d", limit=60)
     bar_date = None if df.empty else df.index[-1].date().isoformat()
     stats = daily_stats(df)
     if not stats:
-        return ScreenOutcome(None, bar_date, False)
+        return ScreenOutcome(None, bar_date, Rejection.INSUFFICIENT)
 
     # 流動性フロア: 20 日平均売買代金
     floor = MIN_TURNOVER_JPY if market == "jp" else MIN_TURNOVER_USD
-    if stats["turnover_avg20"] < floor:
-        return ScreenOutcome(None, bar_date, True)
+    if apply_floor and stats["turnover_avg20"] < floor:
+        return ScreenOutcome(None, bar_date, Rejection.BELOW_FLOOR)
 
     close = float(df["close"].iloc[-1])
     prev = float(df["close"].iloc[-2])
@@ -190,7 +232,7 @@ def evaluate_one(ticker: str, market: str) -> ScreenOutcome:
         reasons.append(f"20 日レンジを{break_dir}に突破 (ATR {break_atr:.1f} 倍)")
         passed.append(break_atr)
     if not passed:
-        return ScreenOutcome(None, bar_date, True)
+        return ScreenOutcome(None, bar_date, Rejection.NO_EVENT)
 
     candidate = {
         "ticker": ticker,
@@ -204,7 +246,7 @@ def evaluate_one(ticker: str, market: str) -> ScreenOutcome:
         "score": max(passed),
         "reasons": reasons,
     }
-    return ScreenOutcome(candidate, bar_date, True)
+    return ScreenOutcome(candidate, bar_date, None)
 
 
 def ensure_bar_dates(bar_dates: dict[str, str]) -> None:
@@ -328,20 +370,24 @@ def json_candidate(row: dict) -> dict:
 
 
 def collect_screen(
-    universe: list[tuple[str, str]], json_mode: bool
-) -> tuple[list[dict], dict[str, str], dict[str, dict]]:
-    """全候補・確定足・市場別の評価件数を収集する。
+    universe: list[Member], json_mode: bool
+) -> tuple[list[dict], dict[str, str], dict[str, dict], dict[str, dict]]:
+    """全候補・確定足・市場別の評価件数・層別の件数を収集する。
 
     Args:
-        universe: ``(ticker, market)`` の母集団。
+        universe: 層付きの母集団。
         json_mode: 標準出力をJSONだけにする場合はTrue。
 
     Returns:
-        ``(全候補, 市場別確定足日, 市場別screen統計)``。
+        ``(全候補, 市場別確定足日, 市場別screen統計, 層別件数)``。
+        層別件数は ``layer_counts()`` の形。
     """
+    tally: dict[tuple[str, Layer], Counter] = {
+        (market, layer): Counter() for market in ("jp", "us") for layer in ("watch", "explore")
+    }
     stats = {
         market: {
-            "universe": sum(1 for _, item_market in universe if item_market == market),
+            "universe": sum(1 for member in universe if member.market == market),
             "evaluated": 0,
             "failures": 0,
             "matched": 0,
@@ -352,11 +398,14 @@ def collect_screen(
     }
     candidates: list[dict] = []
     bar_dates: dict[str, str] = {}
-    for ticker, market in universe:
+    for ticker, market, layer in universe:
+        counts = tally[market, layer]
+        counts["universe"] += 1
         try:
-            outcome = evaluate_one(ticker, market)
+            outcome = evaluate_one(ticker, market, apply_floor=layer == "explore")
         except Exception as exc:  # 1 銘柄の失敗で全体を止めない
             message = str(exc)[:100]
+            counts["failures"] += 1
             stats[market]["failures"] += 1
             stats[market]["failure_details"].append({"ticker": ticker, "message": message})
             if not json_mode:
@@ -371,7 +420,47 @@ def collect_screen(
         if outcome.candidate is not None:
             candidates.append(outcome.candidate)
             stats[market]["matched"] += 1
-    return candidates, bar_dates, stats
+            counts["matched"] += 1
+        else:
+            counts[outcome.rejection.name.lower()] += 1
+    return candidates, bar_dates, stats, layer_counts(tally)
+
+
+def layer_counts(tally: dict[tuple[str, Layer], Counter]) -> dict[str, dict]:
+    """層別の件数を出力用の形にする。
+
+    非通過の内訳はウォッチリスト層だけ出す。探索層で事象が起きないのは常態で、
+    内訳を出しても読み手が取る行動がない。ウォッチリスト層にはフロアをかけないので、
+    フロア未満の件数は出さない。銘柄は出さない (ウォッチリストは購入意図そのもの)。
+
+    Args:
+        tally: ``(市場, 層)`` ごとの件数。
+
+    Returns:
+        ``{market: {"watch": {...}, "explore": {...}}}``。
+    """
+    result: dict[str, dict] = {}
+    for market in ("jp", "us"):
+        watch, explore = tally[market, "watch"], tally[market, "explore"]
+        result[market] = {
+            "watch": {
+                key: watch[key]
+                for key in ("universe", "matched", "no_event", "insufficient", "failures")
+            },
+            "explore": {key: explore[key] for key in ("universe", "matched")},
+        }
+    return result
+
+
+def watch_summary(market: str, counts: dict) -> str | None:
+    """ウォッチリスト層の非通過内訳を 1 行にする。ウォッチリストが空なら None。"""
+    if not counts["universe"]:
+        return None
+    return (
+        f"{market.upper()} ウォッチリスト {counts['universe']} 銘柄: "
+        f"通過 {counts['matched']} / 事象なし {counts['no_event']} / "
+        f"データ不足 {counts['insufficient']} / 取得失敗 {counts['failures']}"
+    )
 
 
 def select_candidates(
@@ -409,7 +498,7 @@ def main() -> None:
     universe, held = build_universe(args.market, args.include_held)
     if not args.json:
         print(held_summary(held, args.include_held))
-    candidates, bar_dates, screen_stats = collect_screen(universe, args.json)
+    candidates, bar_dates, screen_stats, layers = collect_screen(universe, args.json)
     ensure_bar_dates(bar_dates)
     previous_bars = load_previous_bars(LATEST_REPORT_PATH, JOURNAL_PATH)
     bar_status = compare_bars(bar_dates, previous_bars)
@@ -432,6 +521,8 @@ def main() -> None:
                 "executions_applied": None if held is None else held.executions_applied,
                 "journal_warnings": [] if held is None else held.warnings,
             },
+            # 層ごとの件数だけ。ウォッチリストの銘柄は出さない (ADR-0034)
+            "layers": layers,
             "candidates": [json_candidate(row) for row in candidates],
             "params": {
                 "min_move_in_atr": MIN_MOVE_IN_ATR,
@@ -454,6 +545,9 @@ def main() -> None:
     print()
     for market in display_markets:
         print(observation_labels[market])
+    for market in display_markets:
+        if line := watch_summary(market, layers[market]["watch"]):
+            print(line)
     if not candidates:
         return
     print(f"\n候補 {len(candidates)} 件 (採否は analyze.py の分析で判断する):\n")

@@ -78,6 +78,8 @@ uv run screen.py --market jp --earnings
 
 候補は必ず「何かが起きた」銘柄である (通過条件は状態ではなく事象 → `docs/adr/0011-event-based-screen-thresholds.md`)。
 
+ウォッチリストの銘柄が候補に出ないときは、`ウォッチリスト N 銘柄: …` の行で理由の内訳を確かめる。読み方 (事象なしとデータ不足の違い、ウォッチリスト層の候補は板が薄いことがある点) は `docs/output-contract.md` の「ウォッチリスト層の非通過内訳」を見る。
+
 候補ゼロの成立条件と市場別の更新抑止は`docs/report-contract.md`を正とする。夕方ブリーフから
 呼ばれた場合は、`screen.py`が返した候補だけを分析する。
 
