@@ -12,6 +12,10 @@ crypto (swing/screen.py) は Hyperliquid の 1 リクエストで全銘柄の出
    広げるほど実行時間が延びるので、候補ゼロの頻度を実測してから拡張する
 3. **保有** — 既定で除外
 
+長期保有枠 (config/watchlist.py の LONG_TERM_STOCKS) は母集団に入れない。screen.py が
+「買付予定」の節で、事象によらず全件の現況と期限までの残日数を出す
+(→ docs/adr/0035-long-term-holding-slot.md)。
+
 保有銘柄はスクリーニングの対象ではない。screen.py が lib/holdings.py の
 effective_holdings() を除外フィルタとして使い、既定で母集団から落とす
 (--include-held で含められる)。既に持っている銘柄が候補に出ても行動が変わらず、
@@ -33,6 +37,14 @@ try:
     from config.watchlist import WATCHLIST_NAMES_JP
 except ImportError:
     WATCHLIST_NAMES_JP: dict[str, str] = {}
+
+# 長期保有枠 (優待・高配当など、期限までに買って長く持つ銘柄)。ウォッチリストと同じく
+# 購入意図そのものなので config/watchlist.py に置く。書式は雛形と lib/long_term.py を見る
+# (→ docs/adr/0035-long-term-holding-slot.md)
+try:
+    from config.watchlist import LONG_TERM_STOCKS
+except ImportError:
+    LONG_TERM_STOCKS: list[dict] = []
 
 # --- 日本株: 流動性の高い主要銘柄 (編集して拡張) ---
 # public リポジトリなので、ここに実際の保有銘柄を書き足さないこと。
