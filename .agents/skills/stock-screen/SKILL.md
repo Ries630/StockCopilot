@@ -99,8 +99,10 @@ uv run screen.py --market jp --earnings
 **候補が 1 件以上あるときだけ** `analyze.py` を回す。候補ゼロなら実行しない (無駄なリクエストになる)。
 
 ```bash
-uv run analyze.py <候補のティッカーを並べる>
+uv run analyze.py --no-earnings <候補のティッカーを並べる>
 ```
+
+決算注記は STEP 1 の `screen.py --earnings` で取得済みなので、`--no-earnings` で再取得を止め、STEP 3 で読んだ注記を使う。機械データとして合流させる場合は `--json` を付ける。出力の読み方は `docs/output-contract.md` の「分析のJSON出力」を見る。
 
 候補数の上限は `config/universe.py` の `MAX_CANDIDATES` に従う。
 

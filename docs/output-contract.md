@@ -86,6 +86,34 @@ Investment の同期を提案する。
 `--holdings-only` を付けると、同じヘッダと銘柄ごとの 1 行だけを出し、指標は計算しない
 （確定足が更新されなかった市場の保有を取るため）。
 
+## 分析のJSON出力（`analyze.py`）
+
+`--json`では標準出力にJSONだけを出す。保有ヘッダや銘柄ごとの見出し、`[warn]`の行を
+JSONの前へ混ぜない。人間向けの表示とJSONは同じ分析結果から作るので、指標の値は一致する。
+
+| キー | 意味 |
+|---|---|
+| `mode` | `holdings`（引数省略の保有モード）または`tickers`（ティッカー指定） |
+| `analyzed` | 指標を計算したか。`--holdings-only`では`false` |
+| `earnings_fetched` | 決算注記を取得したか。`--no-earnings`では`false` |
+| `holdings` | 保有モードの組み立ての内訳（`as_of` / `executions_read` / `executions_applied` / `journal_warnings` / `stale_days`）。ティッカー指定では`null` |
+| `symbols[]` | 銘柄ごとの結果。並びは保有または引数の順 |
+
+`symbols[]`の各要素は次のキーを持つ。
+
+- `holding`は保有モードの口座・株数・`as_of`・`as_of_source`で、ティッカー指定では`null`。
+  口座が分からない銘柄（as_of 以降に新規に買った銘柄）は`account`が`null`になる
+- `earnings`は`{note, warn}`か`null`。`null`は**取得していない**ことを示し、決算が無いことではない。
+  ETF のように注記が無い銘柄は`note`が空文字になる。`note`の読み方は下の「決算注記」に従う
+- `daily` / `weekly`は`bars`（確定足の本数）/ `last_bar`（最新確定足日）/ `change_pct`
+  （1 本前からの変化率、%）/ `indicators`（指標）を持つ。取得できなかった時間足は`null`
+- `error`は取得・計算の失敗内容で、成功なら`null`。週足だけ失敗した銘柄は`daily`を持ったまま
+  `error`が埋まる。`error`のある銘柄は「判定できなかった」として報告する
+
+**候補分析では決算注記を二重に取得しない。** `screen.py --earnings`が候補の決算注記を
+取得済みなので、候補を`analyze.py`へ渡すときは`--no-earnings`を付け、決算注記は`screen.py`の
+出力から読む。
+
 ## 決算注記（`lib/earnings.py`）
 
 決算日は**日程を報告するために取るのではなく、確定足ベースのトリガーが有効かを

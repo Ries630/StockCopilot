@@ -124,6 +124,7 @@ uv run screen.py --json           # JSON 出力
 # テクニカル分析 (日足 + 週足)
 uv run analyze.py 7203 MSFT       # 銘柄を指定
 uv run analyze.py                 # 引数省略で保有全銘柄
+uv run analyze.py --json 7203     # 構造化データだけを JSON で出力
 
 # データ源の疎通確認
 uv run lib/datasource.py --ticker 7203
