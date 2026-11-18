@@ -473,3 +473,10 @@ def test_json_holdings_only_lists_without_analysis(
     (symbol,) = data["symbols"]
     assert symbol["holding"]["quantity"] == 10
     assert symbol["daily"] is None
+
+
+def test_change_pct_is_none_when_previous_close_is_zero() -> None:
+    """直前の終値が 0 なら変化率を出さない (inf を JSON に出さない)。"""
+    df = _bars(40)
+    df.iloc[-2, df.columns.get_loc("close")] = 0.0
+    assert analyze.build_frame("1d", df).change_pct is None

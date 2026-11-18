@@ -130,7 +130,8 @@ def build_frame(interval: str, df: pd.DataFrame) -> Frame:
         指標と変化率を持つ Frame。
     """
     change = None
-    if len(df) > 1:
+    # 直前の終値が 0 だと inf になり、--json が厳密な JSON でなくなるので計算しない
+    if len(df) > 1 and df["close"].iloc[-2] > 0:
         change = round((df["close"].iloc[-1] / df["close"].iloc[-2] - 1) * 100, 2)
     last = df.index[-1] if len(df) else None
     return Frame(
