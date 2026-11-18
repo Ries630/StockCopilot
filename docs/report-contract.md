@@ -140,6 +140,9 @@ LLMの判断・シナリオ・散文 ──────┘         │
 
 `reference_only: true`（自動運用口座など）の銘柄はラベルを付けず `"—"` を入れる。
 
+長期保有枠として保有中の銘柄は、`ホールド` / `積増し` / `保留` の 3 つだけを使う。語彙は変えず、
+`stock-check` の規範として守る（→ [ADR-0036](adr/0036-long-term-holding-verdicts.md)）。
+
 ### 候補（`candidates[].verdict`）— 4 種
 
 | ラベル | 意味 |

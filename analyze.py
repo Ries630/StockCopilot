@@ -13,6 +13,9 @@
 
 決算日を併記する。crypto と違い株式にはギャップ要因があり、確定足ベースの
 トリガー (「日足終値で X を割ったら」) が決算をまたぐと飛ばされて執行できない。
+
+保有モードでは、長期保有枠 (LONG_TERM_STOCKS) として保有中の銘柄に、株数条件と
+次の権利付き最終日、権利落ち日の注記を添える (→ docs/adr/0036-long-term-holding-verdicts.md)。
 """
 
 import argparse
@@ -22,11 +25,13 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from config.universe import NAMES_JP
+from config.universe import LONG_TERM_STOCKS, NAMES_JP
 from lib.datasource import detect_market, fetch_ohlcv
 from lib.earnings import earnings_note
 from lib.holdings import JOURNAL_SOURCE, EffectiveHoldings, effective_holdings
 from lib.indicators import compute
+from lib.long_term import HeldNote, LongTermStock, held_note
+from lib.long_term import parse as parse_long_term
 from lib.names import display_name
 
 # 保有データ (Investment の生成物) の as_of がこの日数より古ければ警告する。
@@ -47,6 +52,9 @@ HISTORY_BARS = 600
 
 
 
+HeldLongTerm = dict[str, tuple[LongTermStock, float]]
+"""実効保有のうち長期保有枠の銘柄。正規化したティッカー → (設定, 合算株数)。"""
+
 INTERVALS = {"1d": "日足", "1wk": "週足"}
 """分析する時間足と表示名。週足が上位トレンド、日足が執行判断に対応する。"""
 
@@ -59,6 +67,8 @@ class Frame:
         interval: yfinance の時間足 (``1d`` / ``1wk``)。
         bars: 取得できた確定足の本数。
         last_bar: 最新確定足の日付 (ISO 形式)。日付を持たない系列なら None。
+        prev_bar: 最新から 1 本前の確定足の日付 (ISO 形式)。足が 2 本未満か、
+            日付を持たない系列なら None。権利落ち日の判定に使い、JSON には出さない。
         change_pct: 最新確定足の 1 本前からの変化率 (%)。足が 2 本未満なら None。
         indicators: ``lib.indicators.compute()`` の戻り値。データ不足なら ``error`` キーを持つ。
     """
@@ -68,6 +78,7 @@ class Frame:
     last_bar: str | None
     change_pct: float | None
     indicators: dict
+    prev_bar: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,12 +145,14 @@ def build_frame(interval: str, df: pd.DataFrame) -> Frame:
     if len(df) > 1 and df["close"].iloc[-2] > 0:
         change = round((df["close"].iloc[-1] / df["close"].iloc[-2] - 1) * 100, 2)
     last = df.index[-1] if len(df) else None
+    prev = df.index[-2] if len(df) > 1 else None
     return Frame(
         interval=interval,
         bars=len(df),
         last_bar=last.date().isoformat() if hasattr(last, "date") else None,
         change_pct=change,
         indicators=compute(df),
+        prev_bar=prev.date().isoformat() if hasattr(prev, "date") else None,
     )
 
 
@@ -173,11 +186,12 @@ def analyze_symbol(
     return SymbolAnalysis(ticker, market, label, earnings, tuple(frames))
 
 
-def render_analysis(result: SymbolAnalysis) -> str:
+def render_analysis(result: SymbolAnalysis, long_term: HeldNote | None = None) -> str:
     """分析結果を従来の人間向けの表示にする。
 
     Args:
         result: analyze_symbol() の戻り値。
+        long_term: 長期保有枠として保有中なら、その注記。
 
     Returns:
         print() に渡す複数行の文字列 (先頭は空行)。
@@ -185,6 +199,8 @@ def render_analysis(result: SymbolAnalysis) -> str:
     lines = [f"\n########## {result.ticker} {result.label} ##########"]
     if result.earnings:
         lines.append(result.earnings)
+    if long_term is not None:
+        lines.extend(long_term.lines())
     for frame in result.frames:
         lines.append(
             f"--- {INTERVALS[frame.interval]} chg1bar={frame.change_pct}% "
@@ -206,12 +222,15 @@ def frame_json(frame: Frame) -> dict:
     }
 
 
-def symbol_json(target: Target, result: SymbolAnalysis | None) -> dict:
+def symbol_json(
+    target: Target, result: SymbolAnalysis | None, long_term: HeldNote | None = None
+) -> dict:
     """1 銘柄を JSON 出力の形にする。
 
     Args:
         target: 分析対象と付帯情報。
         result: 分析結果。指標を計算しなかった場合 (--holdings-only) は None。
+        long_term: 長期保有枠として保有中なら、その注記。
 
     Returns:
         ``docs/output-contract.md`` の「JSON出力（analyze.py）」の 1 要素。
@@ -236,6 +255,7 @@ def symbol_json(target: Target, result: SymbolAnalysis | None) -> dict:
         "earnings": earnings,
         "daily": frame_json(frames["1d"]) if "1d" in frames else None,
         "weekly": frame_json(frames["1wk"]) if "1wk" in frames else None,
+        "long_term": None if long_term is None else long_term.to_json(),
         "error": None if result is None else result.error,
     }
 
@@ -338,6 +358,65 @@ def holding_target(holding: dict) -> Target:
     return Target(holding["ticker"], holding["market"], name, holding)
 
 
+def _bar_date(value: str | None) -> dt.date | None:
+    """Frame の ISO 形式の日付を date にする。"""
+    return None if value is None else dt.date.fromisoformat(value)
+
+
+def held_long_term(holdings: list[dict], entries: list[dict]) -> HeldLongTerm:
+    """実効保有のうち長期保有枠の銘柄を、設定と合算株数の組で返す。
+
+    株数は同じティッカーの行 (口座別) を合算する。優待の株数条件は銘柄単位で効くため。
+    設定の書式の警告は screen.py が出すので、ここでは読めた銘柄だけを扱う。
+
+    Args:
+        holdings: 実効保有の行。
+        entries: ``LONG_TERM_STOCKS``。
+
+    Returns:
+        正規化したティッカー → (LongTermStock, 合算株数)。枠の銘柄を持っていなければ空。
+    """
+    stocks = {stock.ticker: stock for stock in parse_long_term(entries)[0]}
+    totals: dict[str, float] = {}
+    for holding in holdings:
+        key = _ticker_key(holding["ticker"])
+        if key in stocks:
+            totals[key] = totals.get(key, 0) + (holding["quantity"] or 0)
+    return {key: (stocks[key], total) for key, total in totals.items()}
+
+
+def long_term_note(
+    held: HeldLongTerm, target: Target, result: SymbolAnalysis | None, today: dt.date
+) -> HeldNote | None:
+    """1 銘柄の長期保有枠の注記を作る。枠に無い銘柄やティッカー指定なら None。
+
+    Args:
+        held: held_long_term() の戻り値。
+        target: 分析対象。
+        result: 分析結果。指標を計算しなければ None (権利落ちの判定をしない)。
+        today: 判定日 (テストで注入する)。
+
+    Returns:
+        HeldNote か None。
+    """
+    if target.holding is None or _ticker_key(target.ticker) not in held:
+        return None
+    stock, quantity = held[_ticker_key(target.ticker)]
+    daily = next((f for f in (result.frames if result else ()) if f.interval == "1d"), None)
+    return held_note(
+        stock,
+        quantity,
+        today,
+        prev_bar=_bar_date(daily.prev_bar) if daily else None,
+        last_bar=_bar_date(daily.last_bar) if daily else None,
+    )
+
+
+def _ticker_key(ticker: str) -> str:
+    """LONG_TERM_STOCKS と照合するためにティッカーを正規化する。"""
+    return str(ticker).upper().removesuffix(".T")
+
+
 def main() -> None:
     """引数の銘柄 (省略時は保有全銘柄) を順に分析する。"""
     parser = argparse.ArgumentParser(description="保有/指定銘柄のテクニカル分析")
@@ -359,6 +438,8 @@ def main() -> None:
         parser.error("--holdings-only は保有モード専用で、ティッカーと同時に指定できない")
 
     effective: EffectiveHoldings | None = None
+    held: HeldLongTerm = {}
+    today = dt.date.today()
     if args.tickers:
         # 4 桁コードだけでは何の会社か分からないので、日本株には名前を付ける
         targets = []
@@ -375,6 +456,7 @@ def main() -> None:
             if args.market == "all" or holding["market"] == args.market
         ]
         targets = [holding_target(h) for h in holdings]
+        held = held_long_term(holdings, LONG_TERM_STOCKS)
         if not args.json:
             if not holdings:
                 hint = "" if args.holdings_only else "ティッカーを引数で指定すること。"
@@ -384,17 +466,24 @@ def main() -> None:
             if args.holdings_only:
                 for t in targets:
                     print(f"{t.ticker} {t.market} {t.label}")
+                    note = long_term_note(held, t, None, today)
+                    for line in note.lines() if note else ():
+                        print(f"  {line}")
                 return
 
     results: list[SymbolAnalysis | None] = []
+    notes: list[HeldNote | None] = []
     for t in targets:
-        if args.holdings_only:
-            results.append(None)
-            continue
-        result = analyze_symbol(t.ticker, t.market, t.label, fetch_earnings=not args.no_earnings)
+        result = None
+        if not args.holdings_only:
+            result = analyze_symbol(
+                t.ticker, t.market, t.label, fetch_earnings=not args.no_earnings
+            )
+        note = long_term_note(held, t, result, today)
         results.append(result)
-        if not args.json:
-            print(render_analysis(result))
+        notes.append(note)
+        if result is not None and not args.json:
+            print(render_analysis(result, note))
 
     if args.json:
         print(json.dumps({
@@ -403,7 +492,9 @@ def main() -> None:
             "analyzed": not args.holdings_only,
             "earnings_fetched": not args.holdings_only and not args.no_earnings,
             "holdings": None if effective is None else holdings_json(effective),
-            "symbols": [symbol_json(t, r) for t, r in zip(targets, results, strict=True)],
+            "symbols": [
+                symbol_json(t, r, n) for t, r, n in zip(targets, results, notes, strict=True)
+            ],
         }, indent=1, default=str, ensure_ascii=False))
 
 
