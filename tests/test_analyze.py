@@ -28,6 +28,16 @@ def _effective(rows: list[dict], read: int = 0, applied: int = 0, warnings=()) -
     )
 
 
+def _recorder(calls: list[tuple]):
+    """analyze_symbol の差し替え。位置引数を記録し、空の分析結果を返す。"""
+
+    def fake(ticker: str, market: str, label: str = "", **_) -> analyze.SymbolAnalysis:
+        calls.append((ticker, market, label))
+        return analyze.SymbolAnalysis(ticker, market, label, "", ())
+
+    return fake
+
+
 def _header(rows: list[dict], **kwargs) -> None:
     """保有ヘッダを、表示する行と同じ行から組み立てた内訳で出す。"""
     analyze.print_holdings_header(rows, _effective(rows, **kwargs))
@@ -57,7 +67,7 @@ def test_holdings_market_filter_preserves_metadata(
     ]
     calls: list[tuple[str, str, str]] = []
     monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(holdings))
-    monkeypatch.setattr(analyze, "analyze_symbol", lambda *args: calls.append(args))
+    monkeypatch.setattr(analyze, "analyze_symbol", _recorder(calls))
     monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "us"])
 
     analyze.main()
@@ -71,7 +81,7 @@ def test_explicit_tickers_are_filtered_before_analysis(
     """候補分析でも更新市場以外のティッカーを呼ばない。"""
     calls: list[tuple[str, str, str]] = []
     monkeypatch.setattr(analyze, "display_name", lambda *_: "表示名")
-    monkeypatch.setattr(analyze, "analyze_symbol", lambda *args: calls.append(args))
+    monkeypatch.setattr(analyze, "analyze_symbol", _recorder(calls))
     monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "us", "1111", "USAA"])
 
     analyze.main()
@@ -186,7 +196,7 @@ def test_holdings_mode_analyzes_ticker_bought_after_as_of(
     calls: list[tuple[str, str, str]] = []
     monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(rows, read=2, applied=2))
     monkeypatch.setattr(analyze, "display_name", lambda *_: "新規銘柄")
-    monkeypatch.setattr(analyze, "analyze_symbol", lambda *args: calls.append(args))
+    monkeypatch.setattr(analyze, "analyze_symbol", _recorder(calls))
     monkeypatch.setattr(sys, "argv", ["analyze.py", "--market", "jp"])
 
     analyze.main()
@@ -254,9 +264,7 @@ def test_holdings_only_rejects_tickers(monkeypatch: pytest.MonkeyPatch) -> None:
         analyze.main()
 
 
-def test_analyze_symbol_outputs_converged_ema200(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_analyze_symbol_outputs_converged_ema200(monkeypatch: pytest.MonkeyPatch) -> None:
     """日足・週足とも、出力する EMA200 が全履歴で計算した値と実質的に一致する。
 
     単調に下がる系列では、窓の先頭の終値が収束値より高い。200 本ちょうどの窓だと
@@ -275,9 +283,200 @@ def test_analyze_symbol_outputs_converged_ema200(
     monkeypatch.setattr(
         analyze, "fetch_ohlcv", lambda *_, limit, **__: history.tail(limit).reset_index(drop=True)
     )
-    analyze.analyze_symbol("TEST", "us")
+    result = analyze.analyze_symbol("TEST", "us")
 
-    outputs = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
-    assert len(outputs) == 2
-    for ind in outputs:
-        assert ind["ema200"] == pytest.approx(converged, rel=1e-3)
+    assert [frame.interval for frame in result.frames] == ["1d", "1wk"]
+    for frame in result.frames:
+        assert frame.indicators["ema200"] == pytest.approx(converged, rel=1e-3)
+
+
+def _bars(n: int, start: str = "2026-01-05", freq: str = "B"):
+    """日付付きの確定足を作る (終値は 100 から 1 ずつ上がる)。"""
+    import pandas as pd
+
+    index = pd.date_range(start, periods=n, freq=freq)
+    closes = pd.Series([100.0 + i for i in range(n)], index=index)
+    return pd.DataFrame(
+        {"open": closes, "high": closes + 1, "low": closes - 1, "close": closes, "volume": 1000.0}
+    )
+
+
+def test_analyze_symbol_returns_structured_data_without_printing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """取得・計算は表示せず、時間足ごとの本数・最新足日・変化率・指標を返す。"""
+    frames = {"1d": _bars(40), "1wk": _bars(35, freq="W-FRI")}
+    monkeypatch.setattr(analyze, "earnings_note", lambda *_: "決算 2026-12-01 (あと 13 日)")
+    monkeypatch.setattr(analyze, "fetch_ohlcv", lambda *_, interval, **__: frames[interval])
+
+    result = analyze.analyze_symbol("TEST", "us", "表示名")
+
+    assert capsys.readouterr().out == ""
+    assert result.error is None
+    assert result.earnings == "決算 2026-12-01 (あと 13 日)"
+    daily, weekly = result.frames
+    assert (daily.interval, daily.bars, daily.last_bar) == ("1d", 40, "2026-02-27")
+    assert daily.change_pct == pytest.approx(round((139 / 138 - 1) * 100, 2))
+    assert daily.indicators["close"] == 139.0
+    assert (weekly.interval, weekly.bars) == ("1wk", 35)
+
+
+def test_analyze_symbol_keeps_partial_result_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """週足の取得で失敗しても、取れた日足と失敗内容の両方を返す。"""
+
+    def fetch(*_, interval, **__):
+        if interval == "1wk":
+            raise RuntimeError("rate limited")
+        return _bars(40)
+
+    monkeypatch.setattr(analyze, "earnings_note", lambda *_: "")
+    monkeypatch.setattr(analyze, "fetch_ohlcv", fetch)
+
+    result = analyze.analyze_symbol("TEST", "us")
+
+    assert [frame.interval for frame in result.frames] == ["1d"]
+    assert result.error == "rate limited"
+
+
+def test_analyze_symbol_can_skip_earnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """screen.py で取得済みの候補では、決算注記を二重に取得しない。"""
+    monkeypatch.setattr(analyze, "earnings_note", lambda *_: pytest.fail("決算注記を再取得した"))
+    monkeypatch.setattr(analyze, "fetch_ohlcv", lambda *_, **__: _bars(40))
+
+    result = analyze.analyze_symbol("TEST", "us", fetch_earnings=False)
+
+    assert result.earnings is None
+    assert len(result.frames) == 2
+
+
+def test_render_analysis_keeps_human_format() -> None:
+    """表示は従来どおり、見出し・決算注記・時間足ごとの見出しと指標・失敗の警告を並べる。"""
+    result = analyze.SymbolAnalysis(
+        "TEST",
+        "us",
+        "表示名",
+        "⚠ 決算 2026-11-20 (あと 2 日) — ギャップでトリガーが飛びうる",
+        (analyze.Frame("1d", 40, "2026-11-17", 1.23, {"close": 10.0}),),
+        "rate limited",
+    )
+
+    assert analyze.render_analysis(result).splitlines() == [
+        "",
+        "########## TEST 表示名 ##########",
+        "⚠ 決算 2026-11-20 (あと 2 日) — ギャップでトリガーが飛びうる",
+        "--- 日足 chg1bar=1.23% (確定足 40本) ---",
+        '{"close": 10.0}',
+        "  [warn] TEST: rate limited",
+    ]
+
+
+def test_render_analysis_omits_empty_earnings() -> None:
+    """注記の無い銘柄 (ETF) と取得しなかった銘柄では、決算の行を出さない。"""
+    for earnings in ("", None):
+        result = analyze.SymbolAnalysis("ETF", "us", "", earnings, ())
+        assert analyze.render_analysis(result).splitlines() == ["", "########## ETF  ##########"]
+
+
+def test_json_mode_prints_single_document_with_holding_metadata(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json は保有ヘッダを混ぜず、口座・株数と時間足・決算・失敗を 1 つの JSON で返す。"""
+    rows = [
+        {
+            "ticker": "1111",
+            "market": "jp",
+            "name": "国内銘柄",
+            "account": "口座A",
+            "quantity": 10,
+            "as_of": "2026-08-20",
+            "as_of_source": "stock_as_of",
+        },
+        {
+            "ticker": "2222",
+            "market": "jp",
+            "name": "",
+            "account": "",
+            "quantity": 5,
+            "as_of": "2026-08-25",
+            "as_of_source": JOURNAL_SOURCE,
+        },
+    ]
+
+    def fake(ticker, market, label="", fetch_earnings=True):
+        if ticker == "2222":
+            return analyze.SymbolAnalysis(ticker, market, label, None, (), "boom")
+        frame = analyze.Frame("1d", 40, "2026-11-17", -0.5, {"close": 1.0})
+        return analyze.SymbolAnalysis(ticker, market, label, "⚠ 決算 本日", (frame,))
+
+    monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(rows, read=1, applied=1))
+    monkeypatch.setattr(analyze, "display_name", lambda *_: None)
+    monkeypatch.setattr(analyze, "analyze_symbol", fake)
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--json"])
+
+    analyze.main()
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["mode"] == "holdings"
+    assert data["holdings"]["executions_applied"] == 1
+    first, second = data["symbols"]
+    assert first["holding"] == {
+        "account": "口座A",
+        "quantity": 10,
+        "as_of": "2026-08-20",
+        "as_of_source": "stock_as_of",
+    }
+    assert first["name"] == "国内銘柄"
+    assert first["earnings"] == {"note": "⚠ 決算 本日", "warn": True}
+    assert first["daily"]["change_pct"] == -0.5
+    assert first["weekly"] is None
+    assert first["error"] is None
+    assert second["holding"]["account"] is None
+    assert second["error"] == "boom"
+
+
+def test_json_mode_with_no_earnings_marks_earnings_as_not_fetched(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--no-earnings では決算注記を取らず、JSON でも未取得と分かる。"""
+    monkeypatch.setattr(analyze, "display_name", lambda *_: "表示名")
+    monkeypatch.setattr(analyze, "earnings_note", lambda *_: pytest.fail("決算注記を再取得した"))
+    monkeypatch.setattr(analyze, "fetch_ohlcv", lambda *_, **__: _bars(40))
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--json", "--no-earnings", "USAA"])
+
+    analyze.main()
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["mode"] == "tickers"
+    assert data["holdings"] is None
+    assert data["earnings_fetched"] is False
+    (symbol,) = data["symbols"]
+    assert symbol["earnings"] is None
+    assert symbol["holding"] is None
+    assert symbol["daily"]["bars"] == 40
+
+
+def test_json_holdings_only_lists_without_analysis(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json --holdings-only は指標を計算せず、実効保有だけを JSON で返す。"""
+    rows = [
+        {"ticker": "1111", "market": "jp", "name": "国内銘柄", "account": "口座A", "quantity": 10},
+    ]
+    monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(rows))
+    monkeypatch.setattr(analyze, "analyze_symbol", lambda *_, **__: pytest.fail("指標を計算した"))
+    monkeypatch.setattr(sys, "argv", ["analyze.py", "--json", "--holdings-only"])
+
+    analyze.main()
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["analyzed"] is False
+    (symbol,) = data["symbols"]
+    assert symbol["holding"]["quantity"] == 10
+    assert symbol["daily"] is None
+
+
+def test_change_pct_is_none_when_previous_close_is_zero() -> None:
+    """直前の終値が 0 なら変化率を出さない (inf を JSON に出さない)。"""
+    df = _bars(40)
+    df.iloc[-2, df.columns.get_loc("close")] = 0.0
+    assert analyze.build_frame("1d", df).change_pct is None

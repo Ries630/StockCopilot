@@ -23,6 +23,10 @@
 Investment の as_of 時点の保有ではなく、ジャーナルの執行記録と合成した実効保有
 (lib/holdings.py の effective_holdings)。
 
+長期保有枠 (config/watchlist.py の LONG_TERM_STOCKS) は母集団から外し、「買付予定」の節で
+事象によらず全件の現況と権利付き最終日までの残日数を出す。買い判断はしない
+(docs/adr/0035-long-term-holding-slot.md)。
+
 使い方:
     uv run screen.py                     # JP + US 全ユニバース
     uv run screen.py --market jp         # 日本株のみ
@@ -32,14 +36,17 @@ Investment の as_of 時点の保有ではなく、ジャーナルの執行記�
 """
 
 import argparse
+import datetime as dt
 import json
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Literal, NamedTuple
 
 from config.universe import (
+    LONG_TERM_STOCKS,
     MAX_CANDIDATES,
     MIN_BREAK_IN_ATR,
     MIN_MOVE_IN_ATR,
@@ -56,6 +63,9 @@ from lib.earnings import earnings_note
 from lib.holdings import EffectiveHoldings, effective_holdings
 from lib.indicators import daily_stats
 from lib.journal import JOURNAL_PATH
+from lib.long_term import Plan, Status
+from lib.long_term import parse as parse_long_term
+from lib.long_term import plan as plan_long_term
 from lib.market_observation import (
     active_markets,
     candidate_observation_labels,
@@ -131,9 +141,9 @@ class ScreenOutcome:
 
 
 def build_universe(
-    market: str, include_held: bool
+    market: str, include_held: bool, long_term: Iterable[str] = ()
 ) -> tuple[list[Member], EffectiveHoldings | None]:
-    """層付きの母集団を返す。保有銘柄は既定で除外する。
+    """層付きの母集団を返す。保有銘柄は既定で除外し、長期保有枠は常に除外する。
 
     ウォッチリスト (保有検討中) を探索ユニバースより先に置く。取得順が
     そのまま失敗時の到達順になるため、優先度の高い層から取りに行く。
@@ -142,6 +152,8 @@ def build_universe(
     Args:
         market: "jp" / "us" / "all"。
         include_held: True なら保有銘柄を除外しない。
+        long_term: 長期保有枠のティッカー。買うと決めている銘柄を事象で拾い直す
+            意味がないので、``include_held`` によらず除外する。
 
     Returns:
         ([Member, ...], 実効保有)。ティッカーの重複は除去済み。
@@ -164,7 +176,8 @@ def build_universe(
         if member.ticker not in seen:
             seen.add(member.ticker)
             deduped.append(member)
-    universe = deduped
+    excluded = {ticker.upper() for ticker in long_term}
+    universe = [member for member in deduped if member.ticker.upper() not in excluded]
 
     if include_held:
         return universe, None
@@ -470,6 +483,139 @@ def layer_counts(tally: dict[tuple[str, Layer], Counter]) -> dict[str, dict]:
     return result
 
 
+def held_for_long_term(held: EffectiveHoldings | None) -> set[str] | None:
+    """長期保有枠の状態判定に使う実効保有のティッカーを返す。
+
+    ``--include-held`` で除外しなかった回も状態は判定したいので、そのときは読み直す。
+
+    Args:
+        held: build_universe が返した実効保有。
+
+    Returns:
+        ティッカー集合。保有データを読めなければ None (状態不明として扱う)。
+    """
+    if held is not None:
+        return held.tickers
+    try:
+        return effective_holdings().tickers
+    except FileNotFoundError:
+        return None
+
+
+def long_term_rows(plans: list[Plan]) -> list[dict]:
+    """買付予定 (保有中以外) の銘柄の現況を取得する。
+
+    フロアも事象ゲートも通さず、全件を返す。出すのは現況で、採否ではない (ADR-0006)。
+    期限の近い順に並べる。期限がすべて過去の銘柄は最後に置く。
+
+    Args:
+        plans: 長期保有枠の判定結果。
+
+    Returns:
+        出力用の行。取得できなかった値は None で、理由を ``error`` に入れる。
+    """
+    rows = []
+    for item in plans:
+        if item.status is Status.HELD:
+            continue
+        stock = item.stock
+        row = {
+            "ticker": stock.ticker,
+            "market": stock.market,
+            "currency": "JPY" if stock.market == "jp" else "USD",
+            "name": None,
+            "purpose": stock.purpose,
+            "status": item.status.value,
+            "shares": stock.shares,
+            "deadline": None if item.deadline is None else item.deadline.isoformat(),
+            "days_left": item.days_left,
+            "expired": item.expired,
+            "price": None,
+            "range": None,
+            "required_amount": None,
+            "error": None,
+        }
+        # 1 銘柄の取得失敗で節全体を落とさない (期限の提示は株価と独立)
+        try:
+            df = fetch_ohlcv(stock.ticker, market=stock.market, interval="1d", limit=60)
+        except Exception as exc:
+            row["error"] = str(exc)[:100]
+            df = None
+        if df is not None and df.empty:
+            row["error"] = Rejection.UNAVAILABLE.value
+        elif df is not None:
+            price = float(df["close"].iloc[-1])
+            row["price"] = price
+            row["required_amount"] = price * stock.shares
+            if stats := daily_stats(df):
+                row["range"] = {
+                    "low": stats["low20"],
+                    "high": stats["high20"],
+                    "pos_pct": stats["range_pos"] * 100,
+                }
+            else:
+                row["error"] = Rejection.INSUFFICIENT.value
+        try:
+            row["name"] = display_name(stock.ticker, stock.market, NAMES_JP)
+        except Exception:
+            row["name"] = None
+        rows.append(row)
+    rows.sort(key=lambda row: (row["days_left"] is None, row["days_left"] or 0))
+    return rows
+
+
+def long_term_section(rows: list[dict], held_count: int, warnings: list[str]) -> list[str]:
+    """「買付予定」の節の表示行を作る。長期保有枠が空なら空リスト。
+
+    保有中の銘柄は件数だけを出す (保有一覧を出力に残さない。ADR-0008)。
+
+    Args:
+        rows: long_term_rows() の戻り値。
+        held_count: 保有中の銘柄数。
+        warnings: 設定を読めなかった要素の警告。
+
+    Returns:
+        表示する行。
+    """
+    if not rows and not held_count and not warnings:
+        return []
+    lines = [
+        f"\n買付予定 (長期保有枠 {len(rows) + held_count} 銘柄: 買付予定 {len(rows)} / "
+        f"保有中 {held_count}。採否ではなく現況):"
+    ]
+    lines += [f"  [warn] {warning}" for warning in warnings]
+    for row in rows:
+        cur = "¥" if row["currency"] == "JPY" else "$"
+        purpose = f" [{row['purpose']}]" if row["purpose"] else ""
+        unknown = " (保有を確認できず)" if row["status"] == Status.UNKNOWN.value else ""
+        if row["expired"]:
+            deadline = "次の権利付き最終日なし"
+        elif row["days_left"] == 0:
+            deadline = f"権利付き最終日 {row['deadline']} (本日)"
+        else:
+            deadline = f"権利付き最終日 {row['deadline']} (あと {row['days_left']} 日)"
+        lines.append(f"  {label(row['ticker'], row['name'])}{purpose}{unknown} {deadline}")
+        parts = []
+        if row["price"] is not None:
+            parts.append(f"現値 {cur}{row['price']:,.2f}")
+        if row["range"] is not None:
+            parts.append(
+                f"20日レンジ {row['range']['low']:,.2f}〜{row['range']['high']:,.2f} "
+                f"(終値位置 {row['range']['pos_pct']:.0f}%)"
+            )
+        parts.append(f"必要 {row['shares']}株")
+        if row["required_amount"] is not None:
+            parts.append(f"概算 {cur}{row['required_amount']:,.0f}")
+        if row["error"]:
+            parts.append(f"[warn] {row['error']}")
+        lines.append(f"    {' / '.join(parts)}")
+        if row["expired"]:
+            lines.append(
+                "    ⚠ buy_by の期限がすべて過去。次の権利付き最終日を書き足すこと"
+            )
+    return lines
+
+
 def watch_summary(market: str, counts: dict) -> str | None:
     """ウォッチリスト層の非通過内訳を 1 行にする。ウォッチリストが空なら None。"""
     if not counts["universe"]:
@@ -513,7 +659,14 @@ def main() -> None:
     ap.add_argument("--json", action="store_true", help="JSON で出力")
     args = ap.parse_args()
 
-    universe, held = build_universe(args.market, args.include_held)
+    stocks, long_term_warnings = parse_long_term(LONG_TERM_STOCKS)
+    universe, held = build_universe(
+        args.market, args.include_held, [stock.ticker for stock in stocks]
+    )
+    stocks = [stock for stock in stocks if args.market in ("all", stock.market)]
+    plans = plan_long_term(stocks, held_for_long_term(held) if stocks else None, dt.date.today())
+    long_term = long_term_rows(plans)
+    held_long_term = sum(1 for item in plans if item.status is Status.HELD)
     if not args.json:
         print(held_summary(held, args.include_held))
     candidates, bar_dates, screen_stats, layers = collect_screen(universe, args.json)
@@ -542,6 +695,12 @@ def main() -> None:
             # 層ごとの件数だけ。ウォッチリストの銘柄は出さない (ADR-0034)
             "layers": layers,
             "candidates": [json_candidate(row) for row in candidates],
+            # 買付予定は銘柄ごとの期限が目的なので銘柄を出す。保有中は件数だけ (ADR-0035)
+            "long_term": {
+                "planned": long_term,
+                "held": held_long_term,
+                "warnings": long_term_warnings,
+            },
             "params": {
                 "min_move_in_atr": MIN_MOVE_IN_ATR,
                 "min_break_in_atr": MIN_BREAK_IN_ATR,
@@ -566,6 +725,8 @@ def main() -> None:
     for market in display_markets:
         if line := watch_summary(market, layers[market]["watch"]):
             print(line)
+    for line in long_term_section(long_term, held_long_term, long_term_warnings):
+        print(line)
     if not candidates:
         return
     print(f"\n候補 {len(candidates)} 件 (採否は analyze.py の分析で判断する):\n")

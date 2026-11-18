@@ -55,6 +55,10 @@ Slack 通知には `.env` が要る (`cp .env.example .env`)。未設定でも�
   screen.py の除外と analyze.py の保有モードが共用する
   → [ADR-0015](docs/adr/0015-journal-executions-machine-read.md) /
   [ADR-0031](docs/adr/0031-effective-holdings-for-analyze.md)
+- `lib/long_term.py` — 長期保有枠 (`config/watchlist.py` の `LONG_TERM_STOCKS`) の検証、
+  次の権利付き最終日の選択、実効保有による 買付予定 / 保有中 の判定。長期保有枠は母集団に入れず、
+  `screen.py` が「買付予定」の節で全件の現況を出す
+  → [ADR-0035](docs/adr/0035-long-term-holding-slot.md)
 - `lib/journal.py` — ジャーナルの `### 執行` を読むパーサ (約定日 / 銘柄 / 残株数の 3 項目のみ)。
   書式の正は `journal/README.md`
 - `lib/market_observation.py` — 前回と今回の確定足を市場別に比較し、更新市場だけを分析して

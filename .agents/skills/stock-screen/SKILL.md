@@ -53,6 +53,8 @@ description: 株式現物 (日本株・米国株・ETF) の候補スクリーニ
 
 保有を除外するのは、既に持っている銘柄が候補に出ても行動が変わらないため。保有側の判断は `analyze.py` と `stock-check` が担う。→ `docs/adr/0010-three-layer-universe.md`
 
+長期保有枠 (`config/watchlist.py` の `LONG_TERM_STOCKS`) はどの層にも入らず、STEP 2 の「買付予定」の節に出る。→ `docs/adr/0035-long-term-holding-slot.md`
+
 **除外に使うのは実効保有。** 定義と、除外の内訳をどう読むかは `docs/output-contract.md`。
 
 ## ワークフロー
@@ -78,6 +80,8 @@ uv run screen.py --market jp --earnings
 
 候補は必ず「何かが起きた」銘柄である (通過条件は状態ではなく事象 → `docs/adr/0011-event-based-screen-thresholds.md`)。
 
+長期保有枠を設定していれば、出力に「買付予定」の節が出る。これは候補ではなく、権利付き最終日までの残日数と現況である。採否の判断ラベルを付けず、期限が近い銘柄と書き足しの警告をそのまま報告する。読み方は `docs/output-contract.md` の「買付予定の節」を見る。
+
 ウォッチリストの銘柄が候補に出ないときは、`ウォッチリスト N 銘柄: …` の行で理由の内訳を確かめる。読み方 (事象なしとデータ不足の違い、ウォッチリスト層の候補は板が薄いことがある点) は `docs/output-contract.md` の「ウォッチリスト層の非通過内訳」を見る。
 
 候補ゼロの成立条件と市場別の更新抑止は`docs/report-contract.md`を正とする。夕方ブリーフから
@@ -99,8 +103,10 @@ uv run screen.py --market jp --earnings
 **候補が 1 件以上あるときだけ** `analyze.py` を回す。候補ゼロなら実行しない (無駄なリクエストになる)。
 
 ```bash
-uv run analyze.py <候補のティッカーを並べる>
+uv run analyze.py --no-earnings <候補のティッカーを並べる>
 ```
+
+決算注記は STEP 1 の `screen.py --earnings` で取得済みなので、`--no-earnings` で再取得を止め、STEP 3 で読んだ注記を使う。機械データとして合流させる場合は `--json` を付ける。出力の読み方は `docs/output-contract.md` の「分析のJSON出力」を見る。
 
 候補数の上限は `config/universe.py` の `MAX_CANDIDATES` に従う。
 

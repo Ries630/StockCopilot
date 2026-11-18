@@ -124,6 +124,7 @@ uv run screen.py --json           # JSON 出力
 # テクニカル分析 (日足 + 週足)
 uv run analyze.py 7203 MSFT       # 銘柄を指定
 uv run analyze.py                 # 引数省略で保有全銘柄
+uv run analyze.py --json 7203     # 構造化データだけを JSON で出力
 
 # データ源の疎通確認
 uv run lib/datasource.py --ticker 7203
@@ -148,8 +149,9 @@ Slack 通知には `.env` が要る (`cp .env.example .env` して埋める)。�
 | `lib/indicators.py` | 指標エンジン (RSI / MACD / EMA / BB / ATR / StochRSI / OBV / ADX) |
 | `lib/earnings.py` | 決算注記 (`analyze.py` と `screen.py` が共用) |
 | `lib/holdings.py` | 保有の読み込み (read-only) |
+| `lib/long_term.py` | 長期保有枠の検証・次の権利付き最終日の選択・状態判定 |
 | `config/universe.py` | 探索ユニバースとパラメータ |
-| `config/watchlist.example.py` | ウォッチリストの雛形 (本体 `watchlist.py` は追跡対象外) |
+| `config/watchlist.example.py` | ウォッチリストと長期保有枠の雛形 (本体 `watchlist.py` は追跡対象外) |
 | `lib/verdicts.py` | 判断ラベルの定義と「資金が動く判断」の判定 (メンションの発火条件の正) |
 | `lib/names.py` | 銘柄名の解決 (日本株は 4 桁コードだけでは判別できないため必ず併記する) |
 | `screen.py` | 候補の機械スクリーニング |
