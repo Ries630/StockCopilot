@@ -92,6 +92,18 @@ class Rejection(Enum):
     BELOW_FLOOR = "流動性フロア未満"
     NO_EVENT = "事象なし"
     INSUFFICIENT = "データ不足"
+    UNAVAILABLE = "取得できず"
+
+
+COUNT_KEYS = {
+    Rejection.BELOW_FLOOR: "below_floor",
+    Rejection.NO_EVENT: "no_event",
+    Rejection.INSUFFICIENT: "insufficient",
+    # 上場廃止・ティッカーの誤りでは例外ではなく空の結果が返る。上場直後の
+    # データ不足と区別するため、取得の例外と同じ「取得失敗」に数える
+    Rejection.UNAVAILABLE: "failures",
+}
+"""非通過の理由 → 層別件数のキー。"""
 
 
 @dataclass(frozen=True)
@@ -108,10 +120,14 @@ class ScreenOutcome:
     bar_date: str | None
     rejection: Rejection | None
 
+    def __post_init__(self) -> None:
+        if (self.candidate is None) == (self.rejection is None):
+            raise ValueError("候補と非通過の理由はどちらか一方だけを持つ")
+
     @property
     def evaluated(self) -> bool:
-        """指標を計算できたか (データ不足でなかったか)。"""
-        return self.rejection is not Rejection.INSUFFICIENT
+        """指標を計算できたか (取得できず、データ不足でもなかったか)。"""
+        return self.rejection not in (Rejection.INSUFFICIENT, Rejection.UNAVAILABLE)
 
 
 def build_universe(
@@ -197,7 +213,9 @@ def evaluate_one(ticker: str, market: str, apply_floor: bool = True) -> ScreenOu
         確定足日と、候補または非通過の理由を持つ結果。
     """
     df = fetch_ohlcv(ticker, market=market, interval="1d", limit=60)
-    bar_date = None if df.empty else df.index[-1].date().isoformat()
+    if df.empty:
+        return ScreenOutcome(None, None, Rejection.UNAVAILABLE)
+    bar_date = df.index[-1].date().isoformat()
     stats = daily_stats(df)
     if not stats:
         return ScreenOutcome(None, bar_date, Rejection.INSUFFICIENT)
@@ -422,7 +440,7 @@ def collect_screen(
             stats[market]["matched"] += 1
             counts["matched"] += 1
         else:
-            counts[outcome.rejection.name.lower()] += 1
+            counts[COUNT_KEYS[outcome.rejection]] += 1
     return candidates, bar_dates, stats, layer_counts(tally)
 
 

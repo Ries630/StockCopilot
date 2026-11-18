@@ -279,12 +279,30 @@ def test_evaluate_one_classifies_rejection(
 
 
 def test_evaluate_one_reports_insufficient_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    """指標を計算できない銘柄はデータ不足として返り、評価済みに数えない。"""
-    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *_, **__: pd.DataFrame())
+    """確定足はあるが指標を計算できない銘柄はデータ不足として返り、評価済みに数えない。"""
+    df = pd.DataFrame({"close": [500.0]}, index=pd.date_range("2026-08-20", periods=1))
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *_, **__: df)
     monkeypatch.setattr(screen, "daily_stats", lambda df: None)
     outcome = screen.evaluate_one("TEST", "us")
     assert outcome.rejection is screen.Rejection.INSUFFICIENT
+    assert outcome.bar_date == "2026-08-20"
     assert not outcome.evaluated
+
+
+def test_evaluate_one_reports_empty_fetch_as_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """上場廃止やティッカーの誤りで空の結果が返った銘柄は、データ不足と分けて返す。"""
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *_, **__: pd.DataFrame())
+    outcome = screen.evaluate_one("TEST", "us")
+    assert outcome.rejection is screen.Rejection.UNAVAILABLE
+    assert not outcome.evaluated
+
+
+def test_outcome_requires_candidate_or_rejection() -> None:
+    """候補も理由も持たない (または両方持つ) 結果は作れない。"""
+    with pytest.raises(ValueError):
+        screen.ScreenOutcome(None, "2026-08-20", None)
+    with pytest.raises(ValueError):
+        screen.ScreenOutcome({"market": "jp"}, "2026-08-20", screen.Rejection.NO_EVENT)
 
 
 # --- attach_earnings: 決算注記 ---
@@ -536,3 +554,15 @@ def test_json_output_has_layer_counts_without_tickers(
         "universe", "evaluated", "failures", "matched", "selected", "failure_details",
     }
     assert "SECRET" not in output
+
+
+def test_watch_layer_counts_empty_fetch_as_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """空の結果は「取得失敗」に数え、上場直後の「データ不足」と混ぜない。"""
+    monkeypatch.setattr(
+        screen,
+        "evaluate_one",
+        lambda *_, **__: screen.ScreenOutcome(None, None, screen.Rejection.UNAVAILABLE),
+    )
+    _, _, _, layers = screen.collect_screen([screen.Member("GONE", "jp", "watch")], json_mode=True)
+    assert layers["jp"]["watch"]["failures"] == 1
+    assert layers["jp"]["watch"]["insufficient"] == 0
