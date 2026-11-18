@@ -251,3 +251,73 @@ def test_json_includes_long_term_planned_and_held_count(
     assert section["held"] == 1
     assert section["warnings"] == []
     assert "2222" not in json.dumps(section)
+
+
+# --- 保有中の長期保有枠の注記 (ADR-0036) ---
+
+
+def test_held_note_shows_purpose_shares_and_days_left() -> None:
+    """保有中の注記は、目的 / 必要株数と現在株数 / 次の権利付き最終日までの残日数を 1 行で出す。"""
+    stock = _parse_one(buy_by=["2026-12-25"])
+
+    note = long_term.held_note(stock, 100, TODAY)
+
+    assert note.lines() == [
+        "長期保有枠 [優待] 必要 100株 / 現在 100株 / 次の権利付き最終日 2026-12-25 (あと 37 日)"
+    ]
+    assert note.to_json()["below_floor"] is False
+
+
+def test_held_note_warns_when_below_required_shares() -> None:
+    """株数が shares を割っていれば、株数条件と起算日の確認を促す警告を付ける。"""
+    note = long_term.held_note(_parse_one(), 60, TODAY)
+
+    assert note.below_floor
+    assert note.lines()[1] == (
+        "⚠ 株数が必要株数を 40株 割っている — 優待などの株数条件と継続保有の起算日を確認すること"
+    )
+
+
+def test_held_note_with_expired_deadlines_asks_for_more_dates() -> None:
+    """buy_by がすべて過去なら、次の期限の代わりに書き足しが要ることを出す。"""
+    note = long_term.held_note(_parse_one(), 100, TODAY)
+
+    assert note.lines()[0].endswith("次の権利付き最終日なし (buy_by の書き足しが要る)")
+    assert note.to_json()["deadline"] is None
+
+
+@pytest.mark.parametrize(
+    ("prev_bar", "last_bar", "expected"),
+    [
+        # 権利付き最終日の翌営業日が最新の足 → 権利落ち日
+        (dt.date(2026, 9, 28), dt.date(2026, 9, 29), dt.date(2026, 9, 28)),
+        # 権利付き最終日が金曜で、翌営業日が月曜
+        (dt.date(2026, 3, 27), dt.date(2026, 3, 30), dt.date(2026, 3, 27)),
+        # 最新の足が権利付き最終日そのもの → まだ権利落ちしていない
+        (dt.date(2026, 9, 25), dt.date(2026, 9, 28), None),
+        # 権利落ち日の翌日以降 → 注記しない
+        (dt.date(2026, 9, 29), dt.date(2026, 9, 30), None),
+        # 足の日付が無い (指標を計算していない)
+        (None, None, None),
+    ],
+)
+def test_ex_rights_is_judged_from_bar_dates(prev_bar, last_bar, expected) -> None:
+    """権利落ち日は、直前の足 ≤ 権利付き最終日 < 最新の足 で判定する (営業日の暦を持たない)。"""
+    note = long_term.held_note(_parse_one(), 100, TODAY, prev_bar=prev_bar, last_bar=last_bar)
+
+    assert note.ex_rights_of == expected
+    has_note = any("権利落ち日" in line for line in note.lines())
+    assert has_note is (expected is not None)
+
+
+def test_ex_rights_note_reads_drop_as_normal() -> None:
+    """権利落ちの注記は、下落をトリガー割れ・シナリオ否定と読まないよう添える。"""
+    note = long_term.held_note(
+        _parse_one(), 100, TODAY, prev_bar=dt.date(2026, 9, 28), last_bar=dt.date(2026, 9, 29)
+    )
+
+    assert note.lines()[-1] == (
+        "日足の最新確定足は権利落ち日 (権利付き最終日 2026-09-28 の翌営業日)"
+        " — この日の下落は制度上の正常な値動きで、トリガー割れ・シナリオ否定と読まない"
+    )
+    assert note.to_json()["ex_rights_of"] == "2026-09-28"

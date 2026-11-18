@@ -480,3 +480,87 @@ def test_change_pct_is_none_when_previous_close_is_zero() -> None:
     df = _bars(40)
     df.iloc[-2, df.columns.get_loc("close")] = 0.0
     assert analyze.build_frame("1d", df).change_pct is None
+
+
+def _long_term_rows() -> list[dict]:
+    """長期保有枠の銘柄を 2 口座に分けて持ち、枠外の銘柄も 1 つ持つ実効保有。"""
+    base = {"market": "jp", "name": "銘柄", "as_of": "2026-08-20", "as_of_source": "stock_as_of"}
+    return [
+        {**base, "ticker": "9999", "account": "口座A", "quantity": 40},
+        {**base, "ticker": "9999", "account": "口座B", "quantity": 20},
+        {**base, "ticker": "1111", "account": "口座A", "quantity": 10},
+    ]
+
+
+def _long_term_setup(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> None:
+    """長期保有枠を 1 銘柄設定し、日足の最新確定足を権利落ち日にした分析を差し替える。"""
+    entry = {"ticker": "9999", "shares": 100, "buy_by": ["2026-09-28"], "purpose": "優待"}
+
+    def fake(ticker, market, label="", fetch_earnings=True):
+        frame = analyze.Frame("1d", 40, "2026-09-29", -2.5, {"close": 1.0}, "2026-09-28")
+        return analyze.SymbolAnalysis(ticker, market, label, "", (frame,))
+
+    monkeypatch.setattr(analyze, "LONG_TERM_STOCKS", [entry])
+    monkeypatch.setattr(analyze, "effective_holdings", lambda: _effective(_long_term_rows()))
+    monkeypatch.setattr(analyze, "analyze_symbol", fake)
+    monkeypatch.setattr(sys, "argv", ["analyze.py", *argv])
+
+
+def test_long_term_holding_gets_note_with_summed_shares(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """長期保有枠の保有には、口座をまたいで合算した株数で注記・下限の警告・権利落ちを出す。"""
+    _long_term_setup(monkeypatch, [])
+
+    analyze.main()
+
+    out = capsys.readouterr().out
+    assert "長期保有枠 [優待] 必要 100株 / 現在 60株" in out
+    assert out.count("⚠ 株数が必要株数を 40株 割っている") == 2
+    assert out.count("権利落ち日 (権利付き最終日 2026-09-28 の翌営業日)") == 2
+    assert "chg1bar=-2.5%" in out  # 指標値は変えない
+    section_1111 = out.split("########## 1111")[1]
+    assert "長期保有枠" not in section_1111
+
+
+def test_long_term_note_in_json(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json では symbols[].long_term に注記が入り、枠外の銘柄は null になる。"""
+    _long_term_setup(monkeypatch, ["--json"])
+
+    analyze.main()
+
+    symbols = json.loads(capsys.readouterr().out)["symbols"]
+    note = symbols[0]["long_term"]
+    assert (note["shares"], note["quantity"], note["below_floor"]) == (100, 60, True)
+    assert note["ex_rights_of"] == "2026-09-28"
+    assert symbols[0]["daily"]["change_pct"] == -2.5
+    assert "prev_bar" not in symbols[0]["daily"]
+    assert symbols[2]["long_term"] is None
+
+
+def test_long_term_note_in_holdings_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--holdings-only でも注記と下限の警告は出る。足を取らないので権利落ちの判定はしない。"""
+    _long_term_setup(monkeypatch, ["--holdings-only"])
+    monkeypatch.setattr(analyze, "analyze_symbol", lambda *_, **__: pytest.fail("指標を計算した"))
+
+    analyze.main()
+
+    out = capsys.readouterr().out
+    assert "  長期保有枠 [優待] 必要 100株 / 現在 60株" in out
+    assert "権利落ち日" not in out
+
+
+def test_tickers_mode_has_no_long_term_note(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ティッカー指定では株数が分からないので、長期保有枠の注記を出さない。"""
+    _long_term_setup(monkeypatch, ["--json", "9999"])
+    monkeypatch.setattr(analyze, "display_name", lambda *_: None)
+
+    analyze.main()
+
+    assert json.loads(capsys.readouterr().out)["symbols"][0]["long_term"] is None
