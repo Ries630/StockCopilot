@@ -53,37 +53,37 @@ def _patch_lists(
 def test_watchlist_is_included(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストは探索ユニバースと並んで母集団に入る。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"])
-    assert screen.build_universe("jp", False)[0] == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [screen.Member("1111", "jp", "watch"), screen.Member("2222", "jp", "explore")]
 
 
 def test_watchlist_comes_first(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストを先に取りに行く (優先度の高い層から到達させる)。"""
     _patch_lists(monkeypatch, watch_us=["WWW"], uni_us=["UUU"])
-    assert [t for t, _ in screen.build_universe("us", False)[0]] == ["WWW", "UUU"]
+    assert [m.ticker for m in screen.build_universe("us", False)[0]] == ["WWW", "UUU"]
 
 
 def test_duplicates_are_removed(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリストと探索ユニバースの重複は 1 回だけ取りに行く。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["1111", "2222"])
-    assert screen.build_universe("jp", False)[0] == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [screen.Member("1111", "jp", "watch"), screen.Member("2222", "jp", "explore")]
 
 
 def test_held_excluded_from_watchlist(monkeypatch: pytest.MonkeyPatch) -> None:
     """ウォッチリスト銘柄も保有になれば既定で落ちる (買い済みは候補にしない)。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"], held={"1111"})
-    assert screen.build_universe("jp", False)[0] == [("2222", "jp")]
+    assert screen.build_universe("jp", False)[0] == [screen.Member("2222", "jp", "explore")]
 
 
 def test_include_held_keeps_watchlist(monkeypatch: pytest.MonkeyPatch) -> None:
     """--include-held では保有と重なるウォッチリスト銘柄も残る。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], uni_jp=["2222"], held={"1111"})
-    assert screen.build_universe("jp", True)[0] == [("1111", "jp"), ("2222", "jp")]
+    assert screen.build_universe("jp", True)[0] == [screen.Member("1111", "jp", "watch"), screen.Member("2222", "jp", "explore")]
 
 
 def test_market_filter_splits_layers(monkeypatch: pytest.MonkeyPatch) -> None:
     """--market jp は JP 側のウォッチリストと探索ユニバースだけを組む。"""
     _patch_lists(monkeypatch, watch_jp=["1111"], watch_us=["WWW"], uni_us=["UUU"])
-    assert screen.build_universe("jp", False)[0] == [("1111", "jp")]
+    assert screen.build_universe("jp", False)[0] == [screen.Member("1111", "jp", "watch")]
 
 
 def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,7 +95,7 @@ def test_missing_holdings_does_not_break(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(screen, "effective_holdings", _raise)
     universe, held = screen.build_universe("jp", False)
-    assert universe == [("1111", "jp")]
+    assert universe == [screen.Member("1111", "jp", "watch")]
     assert held is None
 
 
@@ -242,6 +242,69 @@ def test_illiquid_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     assert screen.screen_one("TEST", "us") is None
 
 
+def test_illiquid_passes_when_floor_is_not_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    """フロアをかけない (ウォッチリスト層) なら、フロア未満でも事象ゲートで評価する。"""
+    _patch_bar(monkeypatch, [501.9, 502.0], turnover_avg20=1e7)
+    assert screen.screen_one("TEST", "us", apply_floor=False) is not None
+
+
+def test_illiquid_without_event_is_still_rejected_by_event_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """フロアをかけなくても、事象が起きていなければ候補にしない (ADR-0011)。"""
+    _patch_bar(monkeypatch, [499.0, 499.2], turnover_avg20=1e7)
+    assert screen.screen_one("TEST", "us", apply_floor=False) is None
+
+
+@pytest.mark.parametrize(
+    ("closes", "turnover", "apply_floor", "expected"),
+    [
+        ([501.9, 502.0], 1e7, True, screen.Rejection.BELOW_FLOOR),
+        ([499.0, 499.2], 1e7, False, screen.Rejection.NO_EVENT),
+        ([501.9, 502.0], 1e7, False, None),
+    ],
+)
+def test_evaluate_one_classifies_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    closes: list[float],
+    turnover: float,
+    apply_floor: bool,
+    expected: screen.Rejection | None,
+) -> None:
+    """非通過は理由つきで返り、通過したときは理由を持たない。"""
+    _patch_bar(monkeypatch, closes, turnover_avg20=turnover)
+    outcome = screen.evaluate_one("TEST", "us", apply_floor)
+    assert outcome.rejection is expected
+    assert (outcome.candidate is None) == (expected is not None)
+
+
+def test_evaluate_one_reports_insufficient_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    """確定足はあるが指標を計算できない銘柄はデータ不足として返り、評価済みに数えない。"""
+    df = pd.DataFrame({"close": [500.0]}, index=pd.date_range("2026-08-20", periods=1))
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *_, **__: df)
+    monkeypatch.setattr(screen, "daily_stats", lambda df: None)
+    outcome = screen.evaluate_one("TEST", "us")
+    assert outcome.rejection is screen.Rejection.INSUFFICIENT
+    assert outcome.bar_date == "2026-08-20"
+    assert not outcome.evaluated
+
+
+def test_evaluate_one_reports_empty_fetch_as_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """上場廃止やティッカーの誤りで空の結果が返った銘柄は、データ不足と分けて返す。"""
+    monkeypatch.setattr(screen, "fetch_ohlcv", lambda *_, **__: pd.DataFrame())
+    outcome = screen.evaluate_one("TEST", "us")
+    assert outcome.rejection is screen.Rejection.UNAVAILABLE
+    assert not outcome.evaluated
+
+
+def test_outcome_requires_candidate_or_rejection() -> None:
+    """候補も理由も持たない (または両方持つ) 結果は作れない。"""
+    with pytest.raises(ValueError):
+        screen.ScreenOutcome(None, "2026-08-20", None)
+    with pytest.raises(ValueError):
+        screen.ScreenOutcome({"market": "jp"}, "2026-08-20", screen.Rejection.NO_EVENT)
+
+
 # --- attach_earnings: 決算注記 ---
 
 
@@ -300,7 +363,7 @@ def test_json_output_is_machine_readable_and_counts_failures(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """取得警告をJSONの前へ出さず、件数と内容を構造化する。"""
-    universe = [("GOOD", "jp"), ("FAIL", "jp")]
+    universe = [screen.Member("GOOD", "jp", "explore"), screen.Member("FAIL", "jp", "explore")]
     good = {
         "ticker": "GOOD",
         "market": "jp",
@@ -315,10 +378,10 @@ def test_json_output_is_machine_readable_and_counts_failures(
         "turnover_avg20": 1_000_000_000.0,
     }
 
-    def fake_evaluate_one(ticker: str, market: str) -> screen.ScreenOutcome:
+    def fake_evaluate_one(ticker: str, market: str, apply_floor: bool) -> screen.ScreenOutcome:
         if ticker == "FAIL":
             raise RuntimeError("取得できない")
-        return screen.ScreenOutcome(good, "2026-08-20", True)
+        return screen.ScreenOutcome(good, "2026-08-20", None)
 
     monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
     monkeypatch.setattr(screen, "evaluate_one", fake_evaluate_one)
@@ -370,16 +433,17 @@ def test_candidate_zero_requires_an_evaluated_updated_market(
 ) -> None:
     """評価不能は候補ゼロ観測と区別できる件数になる。"""
     outcomes = {
-        "NO_DATA": screen.ScreenOutcome(None, None, False),
-        "NO_MATCH": screen.ScreenOutcome(None, "2026-08-20", True),
+        "NO_DATA": screen.ScreenOutcome(None, None, screen.Rejection.INSUFFICIENT),
+        "NO_MATCH": screen.ScreenOutcome(None, "2026-08-20", screen.Rejection.NO_EVENT),
     }
 
-    def fake(ticker: str, market: str) -> screen.ScreenOutcome:
+    def fake(ticker: str, market: str, apply_floor: bool) -> screen.ScreenOutcome:
         return outcomes[ticker]
 
     monkeypatch.setattr(screen, "evaluate_one", fake)
-    _, _, stats = screen.collect_screen(
-        [("NO_DATA", "jp"), ("NO_MATCH", "us")], json_mode=True
+    _, _, stats, _ = screen.collect_screen(
+        [screen.Member("NO_DATA", "jp", "explore"), screen.Member("NO_MATCH", "us", "explore")],
+        json_mode=True,
     )
 
     assert stats["jp"]["evaluated"] == 0
@@ -401,3 +465,104 @@ def test_human_output_does_not_call_unchanged_market_candidate_zero(
     output = capsys.readouterr().out
     assert "JP: 新規スクリーニングなし（確定足は前回と同じ）" in output
     assert "候補なし。" not in output
+
+
+# --- 層別の件数: ウォッチリスト層の非通過内訳 ---
+
+
+def _layered_run(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, list[bool]]:
+    """ウォッチリスト 4 銘柄・探索 2 銘柄を、理由を決め打ちして集計する。"""
+    outcomes = {
+        "W_PASS": screen.ScreenOutcome({"market": "jp"}, "2026-08-20", None),
+        "W_QUIET": screen.ScreenOutcome(None, "2026-08-20", screen.Rejection.NO_EVENT),
+        "W_EMPTY": screen.ScreenOutcome(None, None, screen.Rejection.INSUFFICIENT),
+        "E_THIN": screen.ScreenOutcome(None, "2026-08-20", screen.Rejection.BELOW_FLOOR),
+        "E_QUIET": screen.ScreenOutcome(None, "2026-08-20", screen.Rejection.NO_EVENT),
+    }
+    floors: list[bool] = []
+
+    def fake(ticker: str, market: str, apply_floor: bool) -> screen.ScreenOutcome:
+        floors.append(apply_floor)
+        if ticker == "W_FAIL":
+            raise RuntimeError("取得できない")
+        return outcomes[ticker]
+
+    monkeypatch.setattr(screen, "evaluate_one", fake)
+    universe = [
+        *(screen.Member(t, "jp", "watch") for t in ("W_PASS", "W_QUIET", "W_EMPTY", "W_FAIL")),
+        *(screen.Member(t, "jp", "explore") for t in ("E_THIN", "E_QUIET")),
+    ]
+    _, _, _, layers = screen.collect_screen(universe, json_mode=True)
+    return layers, floors
+
+
+def test_floor_is_applied_only_to_explore_layer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """流動性フロアは探索層にだけかかる。"""
+    _, floors = _layered_run(monkeypatch)
+    assert floors == [False, False, False, False, True, True]
+
+
+def test_watch_layer_counts_rejections_by_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ウォッチリスト層は非通過の理由ごとに数える。"""
+    layers, _ = _layered_run(monkeypatch)
+    assert layers["jp"]["watch"] == {
+        "universe": 4, "matched": 1, "no_event": 1, "insufficient": 1, "failures": 1,
+    }
+
+
+def test_explore_layer_has_no_rejection_breakdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """探索層は件数だけで、非通過の内訳を持たない。"""
+    layers, _ = _layered_run(monkeypatch)
+    assert layers["jp"]["explore"] == {"universe": 2, "matched": 0}
+
+
+def test_watch_summary_shows_breakdown_without_tickers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """表示は件数だけで、ウォッチリストの銘柄を出さない (購入意図そのもののため)。"""
+    layers, _ = _layered_run(monkeypatch)
+    line = screen.watch_summary("jp", layers["jp"]["watch"])
+    assert line == "JP ウォッチリスト 4 銘柄: 通過 1 / 事象なし 1 / データ不足 1 / 取得失敗 1"
+    assert "W_" not in line
+
+
+def test_watch_summary_is_omitted_without_watchlist() -> None:
+    """ウォッチリストが空の市場では内訳の行を出さない。"""
+    counts = {"universe": 0, "matched": 0, "no_event": 0, "insufficient": 0, "failures": 0}
+    assert screen.watch_summary("us", counts) is None
+
+
+def test_json_output_has_layer_counts_without_tickers(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json は層ごとの件数を出し、ウォッチリストの銘柄を出さない。"""
+    universe = [screen.Member("SECRET", "jp", "watch")]
+    monkeypatch.setattr(screen, "build_universe", lambda *_: (universe, None))
+    monkeypatch.setattr(
+        screen,
+        "evaluate_one",
+        lambda *_, **__: screen.ScreenOutcome(None, "2026-08-20", screen.Rejection.NO_EVENT),
+    )
+    monkeypatch.setattr(screen, "ensure_bar_dates", lambda bars: None)
+    monkeypatch.setattr(screen, "load_previous_bars", lambda *_: {})
+    monkeypatch.setattr(sys, "argv", ["screen.py", "--json", "--market", "jp"])
+
+    screen.main()
+
+    output = capsys.readouterr().out
+    parsed = json.loads(output)
+    assert parsed["layers"]["jp"]["watch"]["no_event"] == 1
+    assert set(parsed["screen"]["jp"]) == {
+        "universe", "evaluated", "failures", "matched", "selected", "failure_details",
+    }
+    assert "SECRET" not in output
+
+
+def test_watch_layer_counts_empty_fetch_as_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """空の結果は「取得失敗」に数え、上場直後の「データ不足」と混ぜない。"""
+    monkeypatch.setattr(
+        screen,
+        "evaluate_one",
+        lambda *_, **__: screen.ScreenOutcome(None, None, screen.Rejection.UNAVAILABLE),
+    )
+    _, _, _, layers = screen.collect_screen([screen.Member("GONE", "jp", "watch")], json_mode=True)
+    assert layers["jp"]["watch"]["failures"] == 1
+    assert layers["jp"]["watch"]["insufficient"] == 0

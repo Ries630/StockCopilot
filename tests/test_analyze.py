@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import sys
 
 import pytest
@@ -251,3 +252,32 @@ def test_holdings_only_rejects_tickers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["analyze.py", "--holdings-only", "1111"])
     with pytest.raises(SystemExit):
         analyze.main()
+
+
+def test_analyze_symbol_outputs_converged_ema200(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """日足・週足とも、出力する EMA200 が全履歴で計算した値と実質的に一致する。
+
+    単調に下がる系列では、窓の先頭の終値が収束値より高い。200 本ちょうどの窓だと
+    EMA200 が約 1.8% 下にずれるので、窓の長さが足りなければこのテストで検出できる。
+    """
+    import pandas as pd
+    import ta
+
+    closes = pd.Series([400.0 - i * 0.15 for i in range(2000)])
+    history = pd.DataFrame(
+        {"open": closes, "high": closes + 1, "low": closes - 1, "close": closes, "volume": 1000.0}
+    )
+    converged = ta.trend.EMAIndicator(closes, 200).ema_indicator().iloc[-1]
+
+    monkeypatch.setattr(analyze, "earnings_note", lambda *_: None)
+    monkeypatch.setattr(
+        analyze, "fetch_ohlcv", lambda *_, limit, **__: history.tail(limit).reset_index(drop=True)
+    )
+    analyze.analyze_symbol("TEST", "us")
+
+    outputs = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    assert len(outputs) == 2
+    for ind in outputs:
+        assert ind["ema200"] == pytest.approx(converged, rel=1e-3)

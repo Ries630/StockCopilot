@@ -99,6 +99,8 @@ StockCopilotの発注禁止は、CryptoTradingCopilotとの差を埋める対象
 指標計算は、現在もっともコード共有に近い。
 StockCopilotの`compute()`とCryptoTradingCopilotの`calculate_indicators()`は同じ指標と期間を持つが、
 キー名、丸め精度、データ不足時の語彙はまだ共通契約になっていない。
+StockCopilotはEMA200を収束させるため、600本の確定足を渡す（[ADR-0033](adr/0033-ema200-converged-window.md)）。
+CryptoTradingCopilot側の入力本数は、この追記の時点では確認していない。
 CryptoTradingCopilot側では確定足判定と指標計算のネットワークなしテストが追加されたが、
 API接続と出力から独立した共有モジュールにはなっていない。
 共有モジュールを先に作ると、StockCopilotから取引環境への依存が生じる可能性がある。
