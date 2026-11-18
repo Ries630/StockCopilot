@@ -28,6 +28,8 @@ def compute(df: pd.DataFrame) -> dict:
 
     Args:
         df: columns = open/high/low/close/volume の確定足 DataFrame (古い順)。
+            EMA200 は渡された系列の先頭から再帰計算するので、収束した値が要るなら
+            600 本程度を渡す (analyze.py の HISTORY_BARS)。
 
     Returns:
         指標名 → 値の dict。データ不足 (30 本未満) なら {"error": "insufficient"}。
@@ -47,7 +49,8 @@ def compute(df: pd.DataFrame) -> dict:
         "macd_hist_prev": _f(macd.macd_diff().iloc[-2]),
         "ema20": _f(ta.trend.EMAIndicator(c, 20).ema_indicator().iloc[-1]),
         "ema50": _f(ta.trend.EMAIndicator(c, 50).ema_indicator().iloc[-1]),
-        # EMA200 は 200 本未満だと不完全な値になるので出さない (長期トレンドを誤らせる)
+        # EMA200 は 200 本未満だと不完全な値になるので出さない (長期トレンドを誤らせる)。
+        # 200 本ちょうどでも窓の先頭の終値の影響が残るので、収束させる本数は呼び出し側が渡す
         "ema200": (
             _f(ta.trend.EMAIndicator(c, 200).ema_indicator().iloc[-1]) if len(c) >= 200 else None
         ),

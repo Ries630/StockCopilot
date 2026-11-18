@@ -37,6 +37,11 @@ from lib.names import display_name
 # 短い閾値では常時点灯し、警告として機能しなくなるため四半期を目安にする。
 STALE_DAYS = 90
 
+# 指標の計算に渡す確定足の本数。表示したい本数ではなく、EMA200 が窓の先頭の終値に
+# 左右されなくなる本数で決める。EMA は再帰計算で、先頭の終値の重みは 200 本では 13.7%、
+# 600 本では 0.25% 残る (→ docs/adr/0033-ema200-converged-window.md)。
+HISTORY_BARS = 600
+
 
 
 def analyze_symbol(ticker: str, market: str, extra: str = "") -> None:
@@ -51,7 +56,7 @@ def analyze_symbol(ticker: str, market: str, extra: str = "") -> None:
     if note := earnings_note(ticker, market):
         print(note)
     for interval, name in (("1d", "日足"), ("1wk", "週足")):
-        df = fetch_ohlcv(ticker, market=market, interval=interval, limit=200)
+        df = fetch_ohlcv(ticker, market=market, interval=interval, limit=HISTORY_BARS)
         ind = compute(df)
         chg = None
         if len(df) > 1:
